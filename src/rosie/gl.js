@@ -38,8 +38,15 @@ export function createTexture(g, unit, source) {
 }
 
 // the texture units the jacket shaders sample from
-export const UNITS = { atlas: 0, depthA: 1, bounds: 2 };
+export const UNITS = { atlas: 0, depthA: 1, bounds: 2, light: 3, knotArt: 4, knotDep: 5 };
 export function bindJacketSamplers(g, program) {
   g.useProgram(program);
   for (const [name, unit] of Object.entries(UNITS)) g.uniform1i(g.getUniformLocation(program, name), unit);
+}
+
+// the knotted jacket and the idle ⇄ knot turn (f.knot: { box, spin } from Knot.uniforms())
+export function setKnotUniforms(g, program, knot) {
+  const b = knot.box, s = knot.spin;
+  g.uniform4f(g.getUniformLocation(program, 'knotBox'), b.x, b.y, b.w, b.h);
+  g.uniform4f(g.getUniformLocation(program, 'knotSpin'), s[0], s[1], s[2], s[3]);
 }

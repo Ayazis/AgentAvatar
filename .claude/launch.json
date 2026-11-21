@@ -1,1 +1,4 @@
-{ "version": "0.0.1", "configurations": [ { "name": "rosie", "runtimeExecutable": "python", "runtimeArgs": ["-m", "http.server", "8765"], "port": 8765 } ] }
+{ "version": "0.0.1", "configurations": [
+  { "name": "rosie", "runtimeExecutable": "python", "runtimeArgs": ["-m", "http.server", "8765"], "port": 8765 },
+  { "name": "rosie-alt", "runtimeExecutable": "python", "runtimeArgs": ["-m", "http.server", "8767"], "port": 8767, "autoPort": false }
+] }

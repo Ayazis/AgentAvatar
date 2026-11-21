@@ -1,15 +1,20 @@
 // Rosie: the avatar. Owns the WebGL context, the clocks and the frame loop.
-// Public API: Rosie.create(canvas, options), setState('off'|'idle'|'working'), setLevel(0…1), pause(), resume(), destroy().
+// Public API: Rosie.create(canvas, options), setState('off'|'idle'|'working'|'knot'), setLevel(0…1), pause(), resume(), destroy().
 import { loadAssets } from './assets.js';
 import { createTexture, UNITS } from './gl.js';
+import { LightBuffer } from './LightBuffer.js';
 import { ScenePass } from './ScenePass.js';
 import { ParticleLayer } from './particles/ParticleLayer.js';
 import { StateGlide } from './StateGlide.js';
 import { Breath } from './Breath.js';
 import { Input } from './Input.js';
+import { Knot } from './Knot.js';
 
 export class Rosie {
-  static async create(canvas, options = {}) { return new Rosie(canvas, await loadAssets(), options); }
+  static async create(canvas, options = {}) {
+    const [assets, knot] = await Promise.all([loadAssets(), Knot.load()]);
+    return new Rosie(canvas, { ...assets, knot }, options);
+  }
 
   constructor(canvas, assets, options = {}) {
     this.canvas = canvas;
@@ -22,7 +27,7 @@ export class Rosie {
     this.glide = new StateGlide();
     this.breath = new Breath();
     this.input = new Input(canvas);
-    this.state = 'idle'; this.alive = 1; this.level = 0; this.audio = 0;
+    this.state = 'idle'; this.wanted = 'idle'; this.alive = 1; this.level = 0; this.audio = 0;
     this.t = 0; this.travel = 0; this.silkT = 0; this.jacketT = 0;
     this.last = -1; this.id = 0; this.paused = false; this.dead = false;
 
@@ -32,10 +37,14 @@ export class Rosie {
       createTexture(g, UNITS.atlas, assets.atlas),
       createTexture(g, UNITS.depthA, assets.depth),
       createTexture(g, UNITS.bounds, { data: assets.bounds, width: 640, height: 6 }),
+      createTexture(g, UNITS.knotArt, assets.knot.art),
+      createTexture(g, UNITS.knotDep, assets.knot.depth),
     ];
+    this.light = new LightBuffer(g, UNITS.light);
     this.back = new ScenePass(g, assets.spans, false, detail);
     this.particles = new ParticleLayer(g, assets.spans);
     this.front = new ScenePass(g, assets.spans, true, detail);
+    this.knot = assets.knot;
 
     this.observer = new ResizeObserver(this.resize); this.observer.observe(canvas); this.resize();
     document.addEventListener('visibilitychange', this.schedule);
@@ -50,7 +59,12 @@ export class Rosie {
   get gliding() { return this.glide.gliding; }
   get pose() { return this.glide.pose; }
 
-  setState(s) { this.state = s; }
+  // 'knot' glides to the idle pose, then turns into the knotted jacket; leaving it turns back first
+  setState(s) {
+    this.wanted = s;
+    if (s === 'knot') this.state = 'knot';
+    else this.knot.knotted = false;
+  }
   setLevel(v) { this.level = Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0; }
   pause() { this.paused = true; this.schedule(); }
   resume() { this.paused = false; this.schedule(); }
@@ -59,6 +73,7 @@ export class Rosie {
     const c = this.canvas, d = this.dpr();
     c.width = Math.max(1, Math.round(c.clientWidth*d)); c.height = Math.max(1, Math.round(c.clientHeight*d));
     this.gl.viewport(0, 0, c.width, c.height);
+    this.light?.resize(c.width, c.height);
   };
   dpr() { return Math.min(devicePixelRatio || 1, this.maxDpr); }
 
@@ -77,6 +92,9 @@ export class Rosie {
   // advance every clock by dt seconds
   step(dt, now) {
     this.alive += ((this.state === 'off' ? 0 : 1) - this.alive)*(1 - Math.exp(-3*dt));
+    if (this.wanted === 'knot' && !this.knot.knotted && Math.abs(this.pose - 1) < .02) this.knot.knotted = true;
+    if (this.wanted !== 'knot' && !this.knot.active) this.state = this.wanted;
+    this.knot.update(dt, this.tune.knotSpeed);
     this.glide.update(dt, this.state);
     const T = this.tune, pace = dt*(.04 + .96*this.alive);
     this.audio += (this.level - this.audio)*(1 - Math.exp(-12*dt));
@@ -95,11 +113,16 @@ export class Rosie {
       T: this.tune, t: this.t, alive: this.alive, audio: this.audio, breath: this.breath.value, pulse: inp.pulse,
       aspect, width: c.width, height: c.height, x: inp.x, y: inp.y, age: inp.age, tapX: inp.tapX, tapY: inp.tapY,
       travel: this.travel, silkT: this.silkT, jacketT: this.jacketT, pose: this.pose, tilt: [inp.x, -inp.y],
-      dpr: this.dpr()*(c.height/(740*this.dpr()))**.5,
+      dpr: this.dpr()*(c.height/(740*this.dpr()))**.5, knot: this.knot.uniforms(this.tune.knotBlur),
     };
-    this.back.draw(f, this.quad);
     this.particles.update(dt, f);
-    this.particles.draw(aspect, scale, this.pose);
+    if (f.T.denimLight > .001) {                     // the particles' light first, so the jacket can be lit by it
+      this.light.begin();
+      this.particles.draw(f, scale, [1, 10*f.T.lightSpread/this.light.div]);
+      this.light.end(c.width, c.height);
+    } else this.light.clear(c.width, c.height);
+    this.back.draw(f, this.quad);
+    this.particles.draw(f, scale);
     if (f.T.silkOn > .001) {
       const g = this.gl;
       g.enable(g.BLEND); g.blendFunc(g.ONE, g.ONE_MINUS_SRC_ALPHA);
@@ -113,6 +136,6 @@ export class Rosie {
     document.removeEventListener('visibilitychange', this.schedule);
     const g = this.gl;
     g.deleteBuffer(this.quad); this.textures.forEach(t => g.deleteTexture(t));
-    this.back.destroy(); this.front.destroy(); this.particles.destroy();
+    this.back.destroy(); this.front.destroy(); this.particles.destroy(); this.light.destroy();
   }
 }
