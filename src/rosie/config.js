@@ -21,7 +21,7 @@ const IDLE = {
   dustOn: 1, dustAmount: 700, dustSpeed: 1, dustBright: 1,
   jacketMotion: 1, jacketSpeed: 1, breathRate: 1, pSize: 1, tilt: 1,
   denimLight: 1, lightSpread: 1,   // how much the particles light the denim, and how far their light reaches
-  knotBlend: 0, knotSpeed: 1,   // knot flipbook: cross-fade share of each frame (0 = hard cuts), playback speed
+  knotBlur: 1, knotSpeed: 1,    // idle ⇄ knot turn: motion blur (0 = sharp), turn speed
 };
 
 export const TUNE_DEFAULTS = {

@@ -127,7 +127,7 @@ export class Rosie {
       this.front.draw(f, this.quad);
       g.disable(g.BLEND);
     }
-    this.knot.draw(c.width, c.height, scale, this.tune.knotBlend);
+    this.knot.draw(c.width, c.height, scale, this.tune.knotBlur);
   }
 
   destroy() {
