@@ -1,6 +1,6 @@
-// The Off / Idle / Working buttons, keys 1–3, and the status label.
-const STATES = ['off', 'idle', 'working'];
-const LABEL = { off: 'Standby', idle: 'Idle', working: 'Working' };
+// The Off / Idle / Working / Knot buttons, keys 1–4, and the status label.
+const STATES = ['off', 'idle', 'working', 'knot'];
+const LABEL = { off: 'Standby', idle: 'Idle', working: 'Working', knot: 'Knotted' };
 
 export class StateBar {
   constructor(rosie, root = document) {

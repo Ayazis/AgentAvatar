@@ -15,7 +15,8 @@ uniform vec4 tuneA;   // silk brightness, silk width, silk sway, jacket motion
 uniform vec4 tuneB;   // orb glow, sparks, orb size, silk on
 uniform vec4 tuneC;   // silk ring: radius (× orb), tilt, roll (radians), depth offset
 uniform vec2 res;
-uniform float detail;`;
+uniform float detail;
+uniform float cover;  // 1 while a knot flipbook frame is drawn over the jacket: hide ours`;
 
 // near half of the ring: premultiplied, over the particles
 const FRONT_BODY = `
@@ -46,7 +47,7 @@ const BACK_BODY = `
   float thin = (1.-smoothstep(.12,.65,m.g)) * m.r;
   s2 += awake*tuneA.w*thin*vec2(.003*sin(t*1.25+s2.y*7.), .002*cos(t*1.05+s2.x*6.));
   vec4 jk = jacket(s2, m);
-  float den = m.r;
+  float den = m.r*(1. - cover);
   vec3 col = mix(bgc, jk.rgb, den);
 
   // ── the orb's light: a warm core glowing from inside the jacket

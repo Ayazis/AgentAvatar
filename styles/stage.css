@@ -6,6 +6,7 @@
 }
 .section { position: absolute; z-index: 1; left: 24px; right: 24px; top: 22px; pointer-events: none; }
 .section b { color: #c49bb1; font-weight: normal; }
+.stage .knot-layer { position: absolute; left: 0; bottom: 0; pointer-events: none; }
 .stage canvas { display: block; width: 100%; height: clamp(370px, 67vh, 620px); cursor: crosshair; touch-action: none; }
 
 .dot { display: inline-block; width: 6px; height: 6px; margin-right: 9px; border-radius: 50%; background: #ffbaca; box-shadow: 0 0 9px #e799ae; }

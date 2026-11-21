@@ -9,7 +9,7 @@ export const MAX = { orb: 2800, rib: 4500, dust: 2100 };
 export const TRANSITION_DEFAULT = 2.5;   // seconds
 
 // the jacket pose for each state (0 off, 1 idle, 2 working); fractions are a blend between poses
-export const POSE = { off: 0, idle: 1, working: 2 };
+export const POSE = { off: 0, idle: 1, working: 2, knot: 1 };   // knot: idle pose, then the knot flipbook
 
 // One preset per state. Switching state glides every value from one preset to the other.
 // Off uses the idle preset and dims the light.
