@@ -20,6 +20,7 @@ const IDLE = {
   ribOn: 1, ribCount: 3, ribAmount: 1500, ribSpeed: 1, ribBright: 1, ribWidth: 1, ribOrbit: 1,
   dustOn: 1, dustAmount: 700, dustSpeed: 1, dustBright: 1,
   jacketMotion: 1, jacketSpeed: 1, breathRate: 1, pSize: 1, tilt: 1,
+  denimLight: 1, lightSpread: 1,   // how much the particles light the denim, and how far their light reaches
   knotBlend: 0, knotSpeed: 1,   // knot flipbook: cross-fade share of each frame (0 = hard cuts), playback speed
 };
 
@@ -27,7 +28,7 @@ export const TUNE_DEFAULTS = {
   idle: IDLE,
   working: { ...IDLE, silkBright: 1.15, silkWidth: 1.05, sparks: 1.5, sparkSpeed: 3.1,
     orbSpin: 4.2, orbGlow: 1.45, ribSpeed: 2.6, ribWidth: 1.25, dustSpeed: 2.6, dustBright: 1.6,
-    jacketMotion: 1.8, jacketSpeed: 1.7, breathRate: 1.37 },
+    denimLight: 1.25, jacketMotion: 1.8, jacketSpeed: 1.7, breathRate: 1.37 },
 };
 
 export const presetFor = state => state === 'working' ? 'working' : 'idle';

@@ -16,7 +16,9 @@ uniform vec4 tuneB;   // orb glow, sparks, orb size, silk on
 uniform vec4 tuneC;   // silk ring: radius (× orb), tilt, roll (radians), depth offset
 uniform vec2 res;
 uniform float detail;
-uniform float cover;  // 1 while a knot flipbook frame is drawn over the jacket: hide ours`;
+uniform float cover;  // 1 while a knot flipbook frame is drawn over the jacket: hide ours
+uniform sampler2D lightTex;  // the particles' light, drawn soft at low resolution
+uniform float lightAmt;      // how strongly that light falls on the denim`;
 
 // near half of the ring: premultiplied, over the particles
 const FRONT_BODY = `
@@ -49,6 +51,10 @@ const BACK_BODY = `
   vec4 jk = jacket(s2, m);
   float den = m.r*(1. - cover);
   vec3 col = mix(bgc, jk.rgb, den);
+  // ── the particles' light on the denim: raised folds and lighter fabric catch more of it
+  vec3 pl = texture2D(lightTex, uv).rgb;
+  float catchL = .3 + 1.4*dot(jk.rgb, vec3(.3,.5,.2)) + .5*m.g;
+  col += (1. - exp(-pl*3.))*den*catchL*lightAmt*.35;   // soft-clipped so dense swirls glow, not burn
 
   // ── the orb's light: a warm core glowing from inside the jacket
   vec2 dOrb = (st - vec2(ORB_X, ORB_Y))*vec2(.6667, 1.);

@@ -2,6 +2,7 @@
 // Public API: Rosie.create(canvas, options), setState('off'|'idle'|'working'|'knot'), setLevel(0…1), pause(), resume(), destroy().
 import { loadAssets } from './assets.js';
 import { createTexture, UNITS } from './gl.js';
+import { LightBuffer } from './LightBuffer.js';
 import { ScenePass } from './ScenePass.js';
 import { ParticleLayer } from './particles/ParticleLayer.js';
 import { StateGlide } from './StateGlide.js';
@@ -37,6 +38,7 @@ export class Rosie {
       createTexture(g, UNITS.depthA, assets.depth),
       createTexture(g, UNITS.bounds, { data: assets.bounds, width: 640, height: 6 }),
     ];
+    this.light = new LightBuffer(g, UNITS.light);
     this.back = new ScenePass(g, assets.spans, false, detail);
     this.particles = new ParticleLayer(g, assets.spans);
     this.front = new ScenePass(g, assets.spans, true, detail);
@@ -69,6 +71,7 @@ export class Rosie {
     const c = this.canvas, d = this.dpr();
     c.width = Math.max(1, Math.round(c.clientWidth*d)); c.height = Math.max(1, Math.round(c.clientHeight*d));
     this.gl.viewport(0, 0, c.width, c.height);
+    this.light?.resize(c.width, c.height);
   };
   dpr() { return Math.min(devicePixelRatio || 1, this.maxDpr); }
 
@@ -110,8 +113,13 @@ export class Rosie {
       travel: this.travel, silkT: this.silkT, jacketT: this.jacketT, pose: this.pose, tilt: [inp.x, -inp.y],
       dpr: this.dpr()*(c.height/(740*this.dpr()))**.5, cover: this.knot.cover ? 1 : 0,
     };
-    this.back.draw(f, this.quad);
     this.particles.update(dt, f);
+    if (f.T.denimLight > .001) {                     // the particles' light first, so the jacket can be lit by it
+      this.light.begin();
+      this.particles.draw(aspect, scale, this.pose, [1, 10*f.T.lightSpread/this.light.div]);
+      this.light.end(c.width, c.height);
+    } else this.light.clear(c.width, c.height);
+    this.back.draw(f, this.quad);
     this.particles.draw(aspect, scale, this.pose);
     if (f.T.silkOn > .001) {
       const g = this.gl;
@@ -127,6 +135,6 @@ export class Rosie {
     document.removeEventListener('visibilitychange', this.schedule);
     const g = this.gl;
     g.deleteBuffer(this.quad); this.textures.forEach(t => g.deleteTexture(t));
-    this.back.destroy(); this.front.destroy(); this.particles.destroy();
+    this.back.destroy(); this.front.destroy(); this.particles.destroy(); this.light.destroy();
   }
 }

@@ -38,7 +38,7 @@ export function createTexture(g, unit, source) {
 }
 
 // the texture units the jacket shaders sample from
-export const UNITS = { atlas: 0, depthA: 1, bounds: 2 };
+export const UNITS = { atlas: 0, depthA: 1, bounds: 2, light: 3 };
 export function bindJacketSamplers(g, program) {
   g.useProgram(program);
   for (const [name, unit] of Object.entries(UNITS)) g.uniform1i(g.getUniformLocation(program, name), unit);

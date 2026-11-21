@@ -17,7 +17,8 @@ export const GROUPS = [
     ['dustAmount', 'Particles', 0, MAX.dust, 50], ['dustSpeed', 'Speed', 0, 5, .05], ['dustBright', 'Brightness', 0, 2.5, .05]]],
   ['Scene', null, [
     ['jacketMotion', 'Jacket motion', 0, 2.5, .05], ['jacketSpeed', 'Jacket speed', 0, 3, .05], ['breathRate', 'Breathing', .3, 2.5, .05],
-    ['pSize', 'Particle size', .3, 2.5, .05], ['tilt', 'Tilt follow', 0, 2, .05]]],
+    ['pSize', 'Particle size', .3, 2.5, .05], ['tilt', 'Tilt follow', 0, 2, .05],
+    ['denimLight', 'Light on denim', 0, 3, .05], ['lightSpread', 'Light spread', .3, 3, .05]]],
   ['Knot', null, [
     ['knotBlend', 'Blend', 0, 1, .05], ['knotSpeed', 'Speed', .25, 3, .05]]],
 ];
