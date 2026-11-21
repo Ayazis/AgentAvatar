@@ -16,16 +16,16 @@ export class Orb {
   static capacity() { return MAX.orb; }
 
   update(dt, f, put) {
-    const { t, alive, audio, breath, pulse, T } = f;
+    const { t, alive, intensity, breath, pulse, T } = f;
     this.yaw += dt*.22*(.15 + .85*alive)*T.orbSpin;
     const cy = Math.cos(this.yaw), sy = Math.sin(this.yaw), tp = .32, cp = Math.cos(tp), sp = Math.sin(tp);
-    const orbR = .095*T.orbSize*(1 + .03*breath + .12*audio + .25*pulse);
+    const orbR = .095*T.orbSize*(1 + .03*breath + .12*intensity + .25*pulse);
     const frac = T.orbOn > .002 ? T.orbCount/MAX.orb : 0;
     for (const p of this.points) {
       if (p.d >= frac) continue;
       const x1 = p.x*cy + p.z*sy, z1 = -p.x*sy + p.z*cy;
       const y2 = p.y*cp - z1*sp, z2 = p.y*sp + z1*cp;
-      const rip = 1 + audio*.08*Math.sin(p.y*12 - t*12);
+      const rip = 1 + intensity*.08*Math.sin(p.y*12 - t*12);
       const tw = .75 + .25*Math.sin(t*2.2 + p.k);
       const rim = 1 - Math.abs(z2);
       put(x1*orbR*rip, y2*orbR*rip, z2*orbR, p.s*2.1*T.pSize,

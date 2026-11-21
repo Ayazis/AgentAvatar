@@ -22,13 +22,13 @@ export class Ribbons {
   static capacity() { return MAX.rib*3*TRAIL; }
 
   update(dt, f, put) {
-    const { t, alive, audio, breath, pulse, T } = f;
+    const { t, alive, intensity, breath, pulse, T } = f;
     this.yaw += dt*.22*(.15 + .85*alive)*T.ribSpeed;
     const S = .19*T.ribOrbit;                                   // ribbon units → picture height
     const pace = .12 + .88*alive, gy = this.yaw*.45, cgy = Math.cos(gy), sgy = Math.sin(gy);
-    const ribA = alive**1.5*(.85 + .5*audio)*T.ribBright*T.ribOn;
+    const ribA = alive**1.5*(.85 + .5*intensity)*T.ribBright*T.ribOn;
     for (const rb of this.bands) {
-      rb.head += dt*rb.speed*(1 + .3*Math.sin(t*.37 + rb.phase))*(T.ribSpeed + .6*audio)*pace;
+      rb.head += dt*rb.speed*(1 + .3*Math.sin(t*.37 + rb.phase))*(T.ribSpeed + .6*intensity)*pace;
       const ax = rb.tx + .16*Math.sin(t*.13 + rb.phase), az = rb.tz + .22*Math.sin(t*.11 + rb.phase*1.3);
       rb.cx = Math.cos(ax); rb.sx = Math.sin(ax); rb.cz = Math.cos(az); rb.sz = Math.sin(az);
     }
@@ -45,11 +45,11 @@ export class Ribbons {
       const tw = .88 + .12*Math.sin(t*1.3 + p.k*20);
       for (let k = 0; k < TRAIL; k++) {
         const s = sPos - k*Math.sign(rb.speed)*.022*(.4 + .6*T.ribSpeed);   // short streak behind each point
-        const r = 1.55 + .14*Math.sin(3*s + t*.5 + rb.phase) + .07*Math.sin(5*s - t*.35) + .12*audio + .04*breath + .1*pulse;
+        const r = 1.55 + .14*Math.sin(3*s + t*.5 + rb.phase) + .07*Math.sin(5*s - t*.35) + .12*intensity + .04*breath + .1*pulse;
         const cs = Math.cos(s), ss = Math.sin(s);
         let x = r*cs, y = r*ss;
         let z = .26*Math.sin(2*s + t*.4 + rb.phase) + .07*Math.sin(5*s - t*1.4 + rb.phase);
-        const width = 1.8*T.ribWidth*(.11 + .07*Math.sin(s*2 + t*.7))*(.9 + .15*breath)*(1 + .8*audio);
+        const width = 1.8*T.ribWidth*(.11 + .07*Math.sin(s*2 + t*.7))*(.9 + .15*breath)*(1 + .8*intensity);
         const twa = s*1.2 + t*.55 + rb.phase, ct = Math.cos(twa)*width*p.v;
         x += cs*ct; y += ss*ct; z += Math.sin(twa)*width*p.v;
         const y1 = y*rb.cx - z*rb.sx, z1 = y*rb.sx + z*rb.cx;

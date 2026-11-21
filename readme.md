@@ -20,7 +20,7 @@ then go to http://localhost:8765.
 | `src/rosie/` | The avatar: `Rosie` (frame loop, public API), `ScenePass`, `StateGlide`, `Breath`, `Input`, `assets`, `gl`, `config` (presets, budgets) |
 | `src/rosie/shaders/` | GLSL as JS strings: `quad.vert`, `noise`, `jacket` (pose morph), `silkRing`, `scene.frag`, `particles` |
 | `src/rosie/particles/` | `Orb`, `Dust`, `Ribbons`, and `ParticleLayer` that draws them |
-| `src/ui/` | `StateBar`, `AudioLevel`, and `tune/` (`TunePanel`, `controls`, `groups`, `storage`) |
+| `src/ui/` | `StateBar`, `IntensitySlider`, and `tune/` (`TunePanel`, `controls`, `groups`, `storage`) |
 | `tools/build_poses.py` | Rebuilds `assets/` from `assets/source/` (`python tools/build_poses.py [scale] [centreY]`) |
 | `archive/` | The earlier single-file versions (v10, v11) |
 | `chatgpt/` | ChatGPT's version, kept for reference |
@@ -31,6 +31,6 @@ then go to http://localhost:8765.
 import { Rosie } from './src/rosie/Rosie.js';
 const rosie = await Rosie.create(canvas);
 rosie.setState('working');   // 'off' | 'idle' | 'working'
-rosie.setLevel(.4);          // audio level 0…1
+rosie.setIntensity(.4);      // intensity 0…1 (setLevel still works)
 rosie.pause(); rosie.resume(); rosie.destroy();
 ```

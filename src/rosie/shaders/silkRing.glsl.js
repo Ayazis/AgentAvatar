@@ -7,7 +7,7 @@ vec3 ringPt(float th, float Rr, vec4 rot){         // rot = cos/sin of tilt, cos
   return vec3(x*rot.z - y*rot.w, x*rot.w + y*rot.z, z*rot.x);
 }
 // shade the ring at picture point ss. Returns colour + coverage; glow, frontness, distance etc. via out.
-vec4 silkRing(vec2 ss, float awake, float audio, float pulse,
+vec4 silkRing(vec2 ss, float awake, float intensity, float pulse,
               out float glow, out float front, out float d, out float v, out float th, out float band, out float Rr){
   Rr = .095*tuneB.z*tuneC.x;
   float wob = tuneA.z;
@@ -35,7 +35,7 @@ vec4 silkRing(vec2 ss, float awake, float audio, float pulse,
   d = (off.x*tg.y - off.y*tg.x < 0. ? -1. : 1.)*length(off);
   front = smoothstep(.012, -.012, c.z + tuneC.w);  // the near half passes in front of the lapels and the orb
   // the band: a silk ribbon with a slow twist, fibres and a soft sheen
-  float hw = .03*tuneA.y*(1. + .15*audio + .2*pulse);
+  float hw = .03*tuneA.y*(1. + .15*intensity + .2*pulse);
   float tw = th*2. + silkT*.3;
   float face = abs(cos(tw));
   float app = max(hw*(.45 + .55*face), .002);
@@ -48,7 +48,7 @@ vec4 silkRing(vec2 ss, float awake, float audio, float pulse,
   float u1 = fract(th/6.2832 + silkT*.05), u2 = fract(th/6.2832 + silkT*.05 + .5);   // light travelling round the ring
   band = exp(-pow((u1-.5)/.06, 2.)) + .55*exp(-pow((u2-.5)/.045, 2.));
   float far = smoothstep(-.3, .9, c.z/Rr);         // the far side is a little dimmer
-  float I = (.22 + .42*streak*fib + .5*sheen + .55*edgeOn + band*.55 + .5*audio + .9*pulse) * awake * tuneA.x * (1. - .35*far);
+  float I = (.22 + .42*streak*fib + .5*sheen + .55*edgeOn + band*.55 + .5*intensity + .9*pulse) * awake * tuneA.x * (1. - .35*far);
   vec3 deep = vec3(.6,.07,.17), mid = vec3(1.,.36,.5), hot = vec3(1.,.87,.88);
   vec3 sc = mix(deep, mid, smoothstep(.15,.85,I));
   sc = mix(sc, hot, smoothstep(.95,1.7,I)) * (.5 + .85*I);
