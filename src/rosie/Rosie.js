@@ -89,7 +89,7 @@ export class Rosie {
     this.alive += ((this.state === 'off' ? 0 : 1) - this.alive)*(1 - Math.exp(-3*dt));
     if (this.wanted === 'knot' && !this.knot.knotted && Math.abs(this.pose - 1) < .02) this.knot.knotted = true;
     if (this.wanted !== 'knot' && !this.knot.cover) this.state = this.wanted;
-    this.knot.update(dt);
+    this.knot.update(dt, this.tune.knotSpeed);
     this.glide.update(dt, this.state);
     const T = this.tune, pace = dt*(.04 + .96*this.alive);
     this.audio += (this.level - this.audio)*(1 - Math.exp(-12*dt));
@@ -119,7 +119,7 @@ export class Rosie {
       this.front.draw(f, this.quad);
       g.disable(g.BLEND);
     }
-    this.knot.draw(c.width, c.height, scale);
+    this.knot.draw(c.width, c.height, scale, this.tune.knotBlend);
   }
 
   destroy() {

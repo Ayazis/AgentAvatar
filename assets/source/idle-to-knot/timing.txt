@@ -1,11 +1,21 @@
-Rosie idle to knot — suggested frame holds
+Rosie — idle to knot, 16 frames
 
 frame_01.png   120 ms   Idle
-frame_02.png    90 ms   Both tails begin to lift and curl inward
-frame_03.png    80 ms   The left tail crosses in front
-frame_04.png   150 ms   The left tip passes through the loose, open loop
-frame_05.png    80 ms   The ends pull the loop tighter
-frame_06.png   200 ms   The finished knot settles
+frame_02.png    45 ms   First lift
+frame_03.png    50 ms   Tail tips curl inward
+frame_04.png    45 ms   Start the crossover
+frame_05.png    55 ms   The tails cross
+frame_06.png    45 ms   The leading tip turns
+frame_07.png    45 ms   The tip hooks under
+frame_08.png    55 ms   The wrap opens
+frame_09.png    60 ms   The loop takes shape
+frame_10.png    75 ms   The tip meets the opening
+frame_11.png    70 ms   The tip threads through
+frame_12.png    65 ms   The tip emerges
+frame_13.png    55 ms   The loop starts closing
+frame_14.png    55 ms   The ends pull the knot tighter
+frame_15.png    45 ms   The knot settles
+frame_16.png   200 ms   Final knot
 
-Total: 720 ms including holds. Advance directly to the next PNG.
-If the avatar stays knotted, keep frame_06 on screen.
+Total: 1,085 ms including the opening and closing holds.
+Advance directly between PNGs. Hold frame_16 if Rosie stays knotted.

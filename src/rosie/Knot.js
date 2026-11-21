@@ -1,5 +1,6 @@
 // The idle ⇄ knot flipbook: ChatGPT's hand-drawn frames (assets/knot/, built by tools/build_knot.py),
-// played as hard cuts on a 2D canvas laid over the WebGL one. No blending between frames.
+// played on a 2D canvas laid over the WebGL one. Hard cuts by default; `blend` (0…1) cross-fades
+// into the next frame over that last share of each hold.
 // While a frame is on screen the shader's own jacket is hidden (see `cover`).
 const base = new URL('../../assets/knot/', import.meta.url);
 
@@ -41,9 +42,9 @@ export class Knot {
   get cover() { return this.frame >= 0; }     // a frame is showing: hide the shader jacket
   get busy() { return this.frame !== this.target && !(this.target < 0 && this.frame < 0); }
 
-  update(dt) {
+  update(dt, speed = 1) {
     if (this.frame === this.target) return;
-    this.wait -= dt;
+    this.wait -= dt*speed;
     while (this.wait <= 0 && this.frame !== this.target) {
       this.frame += this.target > this.frame ? 1 : -1;
       this.wait += this.frame >= 0 ? this.holds[this.frame] : 0;
@@ -51,14 +52,22 @@ export class Knot {
   }
 
   // scale: the jacket's picture height as a fraction of the canvas height (same formula as the shader)
-  draw(width, height, scale) {
+  draw(width, height, scale, blend = 0) {
     const c = this.canvas, ctx = this.ctx;
     if (c.width !== width || c.height !== height) { c.width = width; c.height = height; }
     ctx.clearRect(0, 0, width, height);
     if (this.frame < 0) return;
     const P = scale*height, b = this.box;
     const x = width/2 + (b.x - .5)/1.5*P, y = height/2 - (.5 - b.y)*P;
-    ctx.drawImage(this.images[this.frame], x, y, b.w/1.5*P, b.h*P);
+    const w = b.w/1.5*P, h = b.h*P;
+    ctx.globalAlpha = 1;
+    ctx.drawImage(this.images[this.frame], x, y, w, h);
+    const next = this.frame + (this.target > this.frame ? 1 : -1);
+    if (blend > 0 && this.frame !== this.target && next >= 0) {
+      const p = 1 - Math.max(0, this.wait)/this.holds[this.frame];   // how far through this hold
+      const a = Math.min(1, Math.max(0, (p - (1 - blend))/blend));
+      if (a > 0) { ctx.globalAlpha = a; ctx.drawImage(this.images[next], x, y, w, h); ctx.globalAlpha = 1; }
+    }
   }
 
   destroy() { this.canvas?.remove(); }

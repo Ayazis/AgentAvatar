@@ -18,4 +18,6 @@ export const GROUPS = [
   ['Scene', null, [
     ['jacketMotion', 'Jacket motion', 0, 2.5, .05], ['jacketSpeed', 'Jacket speed', 0, 3, .05], ['breathRate', 'Breathing', .3, 2.5, .05],
     ['pSize', 'Particle size', .3, 2.5, .05], ['tilt', 'Tilt follow', 0, 2, .05]]],
+  ['Knot', null, [
+    ['knotBlend', 'Blend', 0, 1, .05], ['knotSpeed', 'Speed', .25, 3, .05]]],
 ];

@@ -20,6 +20,7 @@ const IDLE = {
   ribOn: 1, ribCount: 3, ribAmount: 1500, ribSpeed: 1, ribBright: 1, ribWidth: 1, ribOrbit: 1,
   dustOn: 1, dustAmount: 700, dustSpeed: 1, dustBright: 1,
   jacketMotion: 1, jacketSpeed: 1, breathRate: 1, pSize: 1, tilt: 1,
+  knotBlend: 0, knotSpeed: 1,   // knot flipbook: cross-fade share of each frame (0 = hard cuts), playback speed
 };
 
 export const TUNE_DEFAULTS = {
