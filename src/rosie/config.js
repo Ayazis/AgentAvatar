@@ -1,0 +1,32 @@
+// Fixed layout numbers and the default slider values for each state.
+
+// the orb sits at chest height, inside the jacket (picture coords: x 0…1, y 0 top … 1 bottom, 2:3 frame)
+export const ORB = { x: .5, y: .565 };
+
+// particle budgets: the sliders choose how many of these are shown
+export const MAX = { orb: 2800, rib: 4500, dust: 2100 };
+
+export const TRANSITION_DEFAULT = 2.5;   // seconds
+
+// the jacket pose for each state (0 off, 1 idle, 2 working); fractions are a blend between poses
+export const POSE = { off: 0, idle: 1, working: 2 };
+
+// One preset per state. Switching state glides every value from one preset to the other.
+// Off uses the idle preset and dims the light.
+const IDLE = {
+  silkOn: 1, silkBright: 1, silkWidth: 1, silkSway: 1, silkSpeed: 1, sparks: 1, sparkSpeed: 1,
+  ringSize: 1.55, ringTilt: 18, ringRoll: -20, ringDepth: 0,
+  orbOn: 1, orbCount: 1400, orbSize: 1, orbBright: 1, orbSpin: 1, orbGlow: 1,
+  ribOn: 1, ribCount: 3, ribAmount: 1500, ribSpeed: 1, ribBright: 1, ribWidth: 1, ribOrbit: 1,
+  dustOn: 1, dustAmount: 700, dustSpeed: 1, dustBright: 1,
+  jacketMotion: 1, jacketSpeed: 1, breathRate: 1, pSize: 1, tilt: 1,
+};
+
+export const TUNE_DEFAULTS = {
+  idle: IDLE,
+  working: { ...IDLE, silkBright: 1.15, silkWidth: 1.05, sparks: 1.5, sparkSpeed: 3.1,
+    orbSpin: 4.2, orbGlow: 1.45, ribSpeed: 2.6, ribWidth: 1.25, dustSpeed: 2.6, dustBright: 1.6,
+    jacketMotion: 1.8, jacketSpeed: 1.7, breathRate: 1.37 },
+};
+
+export const presetFor = state => state === 'working' ? 'working' : 'idle';

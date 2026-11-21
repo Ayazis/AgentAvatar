@@ -1,0 +1,23 @@
+// The Off / Idle / Working buttons, keys 1–3, and the status label.
+const STATES = ['off', 'idle', 'working'];
+const LABEL = { off: 'Standby', idle: 'Idle', working: 'Working' };
+
+export class StateBar {
+  constructor(rosie, root = document) {
+    this.rosie = rosie;
+    this.buttons = root.querySelectorAll('[data-state]');
+    this.status = root.querySelector('#status');
+    this.buttons.forEach(b => b.addEventListener('click', () => this.select(b.dataset.state)));
+    window.addEventListener('keydown', e => {
+      if (e.altKey || e.ctrlKey || e.metaKey || e.target.closest?.('input')) return;
+      const s = STATES[Number(e.key) - 1];
+      if (s) this.select(s);
+    });
+  }
+  select(state) {
+    this.rosie.setState(state);
+    this.status.textContent = LABEL[state];
+    document.body.dataset.state = state;
+    this.buttons.forEach(b => b.setAttribute('aria-pressed', String(b.dataset.state === state)));
+  }
+}
