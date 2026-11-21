@@ -1,6 +1,6 @@
 // Collects the orb, ribbons and dust into one point buffer and draws it as additive light.
 import { ORB } from '../config.js';
-import { createProgram, bindJacketSamplers } from '../gl.js';
+import { createProgram, bindJacketSamplers, setKnotUniforms } from '../gl.js';
 import { PARTICLE_VERT, particleFrag } from '../shaders/particles.glsl.js';
 import { Orb } from './orb.js';
 import { Dust } from './dust.js';
@@ -37,16 +37,17 @@ export class ParticleLayer {
     this.count = o/STRIDE;
   }
 
-  // light: [0, 1] draws the particles themselves; [1, size factor] draws their light into the light buffer
-  draw(aspect, scale, pose, light = [0, 1]) {
+  // f: frame values (aspect, pose, knot); light: [0, 1] draws the particles themselves; [1, size factor] their light
+  draw(f, scale, light = [0, 1]) {
     const g = this.g, L = this.loc;
     g.useProgram(this.program);
     g.bindBuffer(g.ARRAY_BUFFER, this.buffer);
     g.bufferData(g.ARRAY_BUFFER, this.data, g.DYNAMIC_DRAW);
     g.enableVertexAttribArray(L.pos); g.vertexAttribPointer(L.pos, 3, g.FLOAT, false, STRIDE*4, 0);
     g.enableVertexAttribArray(L.meta); g.vertexAttribPointer(L.meta, 3, g.FLOAT, false, STRIDE*4, 12);
-    g.uniform2f(L.view, aspect, scale);
-    g.uniform1f(L.pose, pose);
+    g.uniform2f(L.view, f.aspect, scale);
+    g.uniform1f(L.pose, f.pose);
+    setKnotUniforms(g, this.program, f.knot);
     g.uniform2f(L.light, light[0], light[1]);
     g.enable(g.BLEND); g.blendFunc(g.ONE, g.ONE);
     g.drawArrays(g.POINTS, 0, this.count);

@@ -1,13 +1,13 @@
 // Glides the live slider values and the jacket pose toward the current state.
 // Both restart from wherever they are when the target changes, so switching midway is smooth.
-import { TUNE_DEFAULTS, TRANSITION_DEFAULT, POSE, presetFor } from './config.js';
+import { TUNE_DEFAULTS, TRANSITION_DEFAULT, POSE, STATES, presetFor } from './config.js';
 
 const smoother = u => u*u*u*(u*(u*6 - 15) + 10);
 const smooth = u => u*u*(3 - 2*u);
 
 export class StateGlide {
   constructor() {
-    this.presets = { idle: { ...TUNE_DEFAULTS.idle }, working: { ...TUNE_DEFAULTS.working } };
+    this.presets = Object.fromEntries(STATES.map(s => [s, { ...TUNE_DEFAULTS[s] }]));
     this.tune = { ...this.presets.idle };   // the live values
     this.transition = TRANSITION_DEFAULT;
     this.from = { ...this.tune }; this.t = 1e9; this.lastTarget = {}; this.lastRef = null;

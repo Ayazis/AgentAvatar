@@ -20,5 +20,5 @@ export const GROUPS = [
     ['pSize', 'Particle size', .3, 2.5, .05], ['tilt', 'Tilt follow', 0, 2, .05],
     ['denimLight', 'Light on denim', 0, 3, .05], ['lightSpread', 'Light spread', .3, 3, .05]]],
   ['Knot', null, [
-    ['knotBlend', 'Blend', 0, 1, .05], ['knotSpeed', 'Speed', .25, 3, .05]]],
+    ['knotBlur', 'Motion blur', 0, 1, .05], ['knotSpeed', 'Speed', .25, 3, .05]]],
 ];
