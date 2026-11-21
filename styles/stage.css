@@ -1,0 +1,18 @@
+/* The avatar stage: canvas, its caption and the status dot */
+.stage {
+  margin: 22px 0 0; position: relative; isolation: isolate; overflow: hidden;
+  background: radial-gradient(ellipse at 51% 48%, #29182c 0, #16101d 38%, #100d15 76%);
+  border: 1px solid #39303d; border-radius: 8px 8px 0 0;
+}
+.section { position: absolute; z-index: 1; left: 24px; right: 24px; top: 22px; pointer-events: none; }
+.section b { color: #c49bb1; font-weight: normal; }
+.stage canvas { display: block; width: 100%; height: clamp(370px, 67vh, 620px); cursor: crosshair; touch-action: none; }
+
+.dot { display: inline-block; width: 6px; height: 6px; margin-right: 9px; border-radius: 50%; background: #ffbaca; box-shadow: 0 0 9px #e799ae; }
+body[data-state=working] .dot { background: #ff8fb3; }
+body[data-state=off] .dot { background: #726975; box-shadow: none; }
+
+@media (max-width: 740px) {
+  .stage canvas { height: clamp(320px, 54vh, 470px); }
+  .section { left: 14px; right: 14px; top: 14px; }
+}
