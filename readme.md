@@ -35,3 +35,7 @@ rosie.setState('working');   // 'off' | 'idle' | 'working'
 rosie.setLevel(.4);          // audio level 0…1
 rosie.pause(); rosie.resume(); rosie.destroy();
 ```
+
+## Live version
+
+Every push to `main` is published by `.github/workflows/pages.yml` to the `gh-pages` branch, which GitHub Pages serves at https://ayazis.github.io/AgentAvatar/. Only the runtime files go out (`index.html`, `src/`, `styles/`, `assets/` without `assets/source/`). Don't push to `gh-pages` by hand; it is overwritten on each deploy.
