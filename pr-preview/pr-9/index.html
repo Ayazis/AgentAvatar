@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Rosie — Presence console</title>
+  <link rel="stylesheet" href="styles/base.css">
+  <link rel="stylesheet" href="styles/layout.css">
+  <link rel="stylesheet" href="styles/stage.css">
+  <link rel="stylesheet" href="styles/controls.css">
+  <link rel="stylesheet" href="styles/tune.css">
+  <link rel="stylesheet" href="styles/switch.css">
+  <script type="module" src="src/main.js"></script>
+</head>
+<body>
+<main>
+  <header>
+    <span class="brand">Rosie</span>
+    <span class="mono muted">AI presence console</span>
+  </header>
+
+  <section class="stage" aria-label="Interactive avatar">
+    <div class="section mono">
+      <b>Presence field</b>
+      <span><i class="dot"></i><span id="status" aria-live="polite">Idle</span></span>
+    </div>
+    <canvas id="presence" aria-label="A denim jacket that folds shut, half-opens or opens wide around a glowing orb of particles, with a ribbon of rose light and particles swirling around. Tap to greet Rosie."></canvas>
+  </section>
+
+  <div class="controls">
+    <div class="setting">
+      <span class="mono muted">State</span>
+      <div class="row">
+        <button data-state="off">Off<span>1</span></button>
+        <button data-state="idle">Idle<span>2</span></button>
+        <button data-state="working">Working<span>3</span></button>
+        <button data-state="knot">Knot<span>4</span></button>
+      </div>
+    </div>
+    <div class="setting">
+      <label class="mono muted" for="intensity">Intensity</label>
+      <input id="intensity" type="range" value="0" min="0" max="100">
+      <output for="intensity">0%</output>
+    </div>
+  </div>
+
+  <details class="tune">
+    <summary><span class="mono">Tune</span><span class="mono muted">editing <b id="editing">Idle</b> preset</span></summary>
+    <p class="tune-note">Each state (Standby, Idle, Working, Knotted) has its own settings, remembered in this browser. Switching state glides every slider to the new state's values over the transition time — the sliders move with it. Switch state to edit its preset.</p>
+    <div class="tune-grid" id="tune"></div>
+    <div class="tune-actions">
+      <button id="tuneReset" type="button">Reset this preset</button>
+      <button id="tuneResetAll" type="button">Reset all</button>
+      <button id="tuneCopy" type="button">Copy settings</button>
+    </div>
+  </details>
+
+  <footer>Move or tilt your phone &nbsp;·&nbsp; Tap to greet Rosie</footer>
+</main>
+</body>
+</html>
