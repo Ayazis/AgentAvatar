@@ -23,16 +23,17 @@ const ease = p => p < .5 ? 4*p*p*p : 1 - Math.pow(-2*p + 2, 3)/2;
 
 export class Knot {
   static async load() {
-    const [meta, art, depth] = await Promise.all([
+    const [meta, art, depth, scarfArt, scarfDepth] = await Promise.all([
       fetch(new URL('knot.json', base)).then(r => { if (!r.ok) throw Error('Could not load knot.json'); return r.json(); }),
-      image('knot.webp'), image('knot-depth.webp'),
+      image('knot.webp'), image('knot-depth.webp'), image('../scarf/scarf.webp'), image('../scarf/scarf-depth.webp'),
     ]);
-    return new Knot(meta.box, art, depth);
+    // two knotted looks share the same turn and box: the knotted jacket and the scarf
+    return new Knot(meta.box, { knot: { art, depth }, scarf: { art: scarfArt, depth: scarfDepth } });
   }
 
-  constructor(box, art, depth) {
+  constructor(box, variants) {
     this.box = box;                            // where the knotted jacket sits, in picture coords (st)
-    this.art = art; this.depth = depth;
+    this.variants = variants; this.variant = 'knot';
     this.p = 0; this.target = 0;               // turn progress 0 (idle) … 1 (knotted)
     this.prev = 0;                             // progress at the last drawn frame, for the blur
   }
@@ -47,6 +48,9 @@ export class Knot {
     const step = dt*speed/DURATION;
     this.p = this.target > this.p ? Math.min(this.target, this.p + step) : Math.max(this.target, this.p - step);
   }
+
+    // which knotted look the turn ends in; only changed while idle (not knotted, not turning)
+  setVariant(v) { if (!this.active && v in this.variants) { this.variant = v; return true; } return false; }
 
   // for the shader: knotBox, and knotSpin = (angle now, angle at the blur's far end, samples, swap angle)
   uniforms(blur = 1) {
