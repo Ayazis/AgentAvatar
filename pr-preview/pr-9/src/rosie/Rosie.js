@@ -1,5 +1,5 @@
 // Rosie: the avatar. Owns the WebGL context, the clocks and the frame loop.
-// Public API: Rosie.create(canvas, options), setState('off'|'idle'|'working'|'knot'), setIntensity(0…1), pause(), resume(), destroy().
+// Public API: Rosie.create(canvas, options), setState('off'|'idle'|'working'|'knot'|'scarf'), setIntensity(0…1), pause(), resume(), destroy().
 import { loadAssets } from './assets.js';
 import { createTexture, UNITS } from './gl.js';
 import { LightBuffer } from './LightBuffer.js';
@@ -9,6 +9,8 @@ import { StateGlide } from './StateGlide.js';
 import { Breath } from './Breath.js';
 import { Input } from './Input.js';
 import { Knot } from './Knot.js';
+
+const isKnotState = s => s === 'knot' || s === 'scarf';
 
 export class Rosie {
   static async create(canvas, options = {}) {
@@ -37,9 +39,15 @@ export class Rosie {
       createTexture(g, UNITS.atlas, assets.atlas),
       createTexture(g, UNITS.depthA, assets.depth),
       createTexture(g, UNITS.bounds, { data: assets.bounds, width: 640, height: 6 }),
-      createTexture(g, UNITS.knotArt, assets.knot.art),
-      createTexture(g, UNITS.knotDep, assets.knot.depth),
+      createTexture(g, UNITS.knotArt, assets.knot.variants.knot.art),
+      createTexture(g, UNITS.knotDep, assets.knot.variants.knot.depth),
     ];
+    // the scarf's textures wait unbound; showVariant() puts the right pair on the knot units
+    this.variantTex = { knot: this.textures.slice(3, 5), scarf: [
+      createTexture(g, UNITS.knotArt, assets.knot.variants.scarf.art),
+      createTexture(g, UNITS.knotDep, assets.knot.variants.scarf.depth)] };
+    this.textures.push(...this.variantTex.scarf);
+    this.showVariant('knot');
     this.light = new LightBuffer(g, UNITS.light);
     this.back = new ScenePass(g, assets.spans, false, detail);
     this.particles = new ParticleLayer(g, assets.spans);
@@ -59,10 +67,17 @@ export class Rosie {
   get gliding() { return this.glide.gliding; }
   get pose() { return this.glide.pose; }
 
+  showVariant(v) {
+    const g = this.gl, [art, dep] = this.variantTex[v];
+    g.activeTexture(g.TEXTURE0 + UNITS.knotArt); g.bindTexture(g.TEXTURE_2D, art);
+    g.activeTexture(g.TEXTURE0 + UNITS.knotDep); g.bindTexture(g.TEXTURE_2D, dep);
+  }
+
+  // 'knot' and 'scarf' glide to the idle pose, then turn into the knotted look; leaving (or switching look) turns back first
   // 'knot' glides to the idle pose, then turns into the knotted jacket; leaving it turns back first
   setState(s) {
     this.wanted = s;
-    if (s === 'knot') this.state = 'knot';
+    if (isKnotState(s)) this.state = s;
     else this.knot.knotted = false;
   }
   // how intense Rosie is (0 calm … 1 most lively): she speeds up, swells and brightens; the value is eased in
@@ -94,8 +109,11 @@ export class Rosie {
   // advance every clock by dt seconds
   step(dt, now) {
     this.alive += ((this.state === 'off' ? 0 : 1) - this.alive)*(1 - Math.exp(-3*dt));
-    if (this.wanted === 'knot' && !this.knot.knotted && Math.abs(this.pose - 1) < .02) this.knot.knotted = true;
-    if (this.wanted !== 'knot' && !this.knot.active) this.state = this.wanted;
+    const k = this.knot, want = this.wanted;
+    if (isKnotState(want) && k.variant !== want && k.knotted) k.knotted = false;      // other look: turn back first
+    if (isKnotState(want) && k.variant !== want && k.setVariant(want)) this.showVariant(want);
+    if (isKnotState(want) && k.variant === want && !k.knotted && Math.abs(this.pose - 1) < .02) k.knotted = true;
+    if (!isKnotState(want) && !k.active) this.state = want;
     this.knot.update(dt, this.tune.knotSpeed);
     this.glide.update(dt, this.state);
     const T = this.tune, pace = dt*(.04 + .96*this.alive);
