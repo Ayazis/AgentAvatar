@@ -1,6 +1,6 @@
 /* The Tune panel: groups of sliders */
-.tune { margin-top: 14px; background: #17121a; border: 1px solid #39303d; border-radius: 8px; }
-.tune summary { display: flex; justify-content: space-between; align-items: center; padding: 16px 22px; cursor: pointer; list-style: none; }
+.tune { flex: none; margin-top: 8px; background: #17121a; border: 1px solid #39303d; border-radius: 8px; }
+.tune summary { display: flex; justify-content: space-between; align-items: center; padding: 10px 18px; cursor: pointer; list-style: none; }
 .tune summary::-webkit-details-marker { display: none; }
 .tune summary::after { content: '+'; color: #ac9caa; font: 14px monospace; margin-left: 12px; }
 .tune[open] summary::after { content: '–'; }
@@ -20,14 +20,18 @@
 .ctl input { width: 100%; }
 .ctl output { min-width: 0; text-align: right; font-size: 10px; }
 
-/* keep Rosie on screen while tuning */
-body:has(.tune[open]) .stage { position: sticky; top: 0; z-index: 2; box-shadow: 0 10px 24px #0c0a10; }
-body:has(.tune[open]) .stage canvas { height: clamp(300px, 54vh, 560px); }
+/* Tune opens as an overlay sheet so the page never scrolls */
+.tune[open] {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 5; max-height: 72%;
+  overflow-y: auto; overscroll-behavior: contain; box-shadow: 0 -12px 30px #0c0a10;
+}
+.tune[open] summary { position: sticky; top: 0; z-index: 1; background: #17121a; }
 
 @media (max-width: 740px) {
-  body:has(.tune[open]) .stage canvas { height: 42vh; }
   .tune-grid { padding: 0 12px 4px; grid-template-columns: 1fr; }
-  .tune summary { padding: 14px 16px; }
-  .tune-note { margin: 0 16px 12px; }
+  .tune summary { padding: 10px 14px; }
+  .tune summary .muted { display: none; }
+  .tune-note { margin: 0 14px 10px; }
   .tune-actions { padding: 12px; }
 }
+@media (max-height: 520px) { header .muted { display: none; } footer { display: none; } }
