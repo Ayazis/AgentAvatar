@@ -1,12 +1,13 @@
 /* Header, footer and the shared flex rows */
 header, footer, .section, .row, .setting { display: flex; align-items: center; justify-content: space-between; }
-header { padding: 0 0 21px; border-bottom: 1px solid #37303b; }
+header { flex: none; padding: 0 0 10px; border-bottom: 1px solid #37303b; }
 .brand { font: italic 34px Georgia, serif; letter-spacing: -2px; }
 .row { gap: 6px; }
 .setting { gap: 16px; }
-footer { padding: 16px 2px; text-transform: none; letter-spacing: .04em; }
+footer { flex: none; padding: 8px 2px 0; text-transform: none; letter-spacing: .04em; }
 
 @media (max-width: 740px) {
   .setting { flex-wrap: wrap; }
-  footer { line-height: 1.6; }
+  footer { line-height: 1.4; font-size: 9px; }
+  .brand { font-size: 28px; }
 }
