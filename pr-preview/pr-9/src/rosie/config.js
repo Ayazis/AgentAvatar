@@ -9,7 +9,7 @@ export const MAX = { orb: 6000, rib: 9000, dust: 5000 };
 export const TRANSITION_DEFAULT = 2.5;   // seconds
 
 // the jacket pose for each state (0 off, 1 idle, 2 working); fractions are a blend between poses
-export const POSE = { off: 0, idle: 1, working: 2, knot: 1, scarf: 1 };   // knot, scarf: idle pose, then the turn into the knotted look
+export const POSE = { off: 0, idle: 1, working: 2, knot: 1, scarf: 1, hoodie: 1 };   // knot, scarf: idle pose, then the turn into the knotted look
 
 // One preset per state. Switching state glides every value from one preset to the other.
 // Off and Knot start as copies of Idle; Off also dims the light on its own.
@@ -24,13 +24,14 @@ const IDLE = {
   knotBlur: 1, knotSpeed: 1,    // idle ⇄ knot turn: motion blur (0 = sharp), turn speed
 };
 
-export const STATES = ['off', 'idle', 'working', 'knot', 'scarf'];
+export const STATES = ['off', 'idle', 'working', 'knot', 'scarf', 'hoodie'];
 
 export const TUNE_DEFAULTS = {
   off: IDLE,
   idle: IDLE,
   knot: IDLE,
   scarf: IDLE,
+  hoodie: IDLE,
   working: { ...IDLE, silkBright: 1.15, silkWidth: 1.05, sparks: 1.5, sparkSpeed: 3.1,
     orbSpin: 4.2, orbGlow: 1.45, ribSpeed: 2.6, ribWidth: 1.25, dustSpeed: 2.6, dustBright: 1.6,
     denimLight: 1.25, denimShade: 1.3, jacketMotion: 1.8, jacketSpeed: 1.7, breathRate: 1.37 },

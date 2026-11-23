@@ -4,7 +4,7 @@ import { GROUPS } from './groups.js';
 import { slider, groupSwitch } from './controls.js';
 import { save, restore, exportTune } from './storage.js';
 
-const LABEL = { off: 'Standby', idle: 'Idle', working: 'Working', knot: 'Knotted', scarf: 'Scarf' };
+const LABEL = { off: 'Standby', idle: 'Idle', working: 'Working', knot: 'Knotted', scarf: 'Scarf', hoodie: 'Hoodie' };
 
 export class TunePanel {
   constructor(rosie, root = document) {

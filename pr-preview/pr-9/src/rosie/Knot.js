@@ -11,6 +11,13 @@ const SWAP = 2.5*Math.PI;          // edge-on after 1¼ turns: switch idle ⇄ k
 const DURATION = 1.1;              // seconds at speed 1
 const SAMPLES = 12;                // motion-blur samples per frame at full blur (the shader's loop limit)
 
+// the knotted looks: name → [colour, depth], built by tools/build_knot.py and tools/build_variant.py
+const LOOKS = {
+  knot: ['knot.webp', 'knot-depth.webp'],
+  scarf: ['../scarf/scarf.webp', '../scarf/scarf-depth.webp'],
+  hoodie: ['../hoodie/hoodie.webp', '../hoodie/hoodie-depth.webp'],
+};
+
 const image = src => new Promise((ok, fail) => {
   const img = new Image();
   img.onload = () => ok(img);
@@ -23,12 +30,13 @@ const ease = p => p < .5 ? 4*p*p*p : 1 - Math.pow(-2*p + 2, 3)/2;
 
 export class Knot {
   static async load() {
-    const [meta, art, depth, scarfArt, scarfDepth] = await Promise.all([
+    const looks = Object.entries(LOOKS);
+    const [meta, ...pairs] = await Promise.all([
       fetch(new URL('knot.json', base)).then(r => { if (!r.ok) throw Error('Could not load knot.json'); return r.json(); }),
-      image('knot.webp'), image('knot-depth.webp'), image('../scarf/scarf.webp'), image('../scarf/scarf-depth.webp'),
+      ...looks.map(([, [a, d]]) => Promise.all([image(a), image(d)])),
     ]);
-    // two knotted looks share the same turn and box: the knotted jacket and the scarf
-    return new Knot(meta.box, { knot: { art, depth }, scarf: { art: scarfArt, depth: scarfDepth } });
+    // the looks share the same turn and box
+    return new Knot(meta.box, Object.fromEntries(looks.map(([k], i) => [k, { art: pairs[i][0], depth: pairs[i][1] }])));
   }
 
   constructor(box, variants) {

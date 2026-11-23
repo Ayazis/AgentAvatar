@@ -1,5 +1,5 @@
 // Rosie: the avatar. Owns the WebGL context, the clocks and the frame loop.
-// Public API: Rosie.create(canvas, options), setState('off'|'idle'|'working'|'knot'|'scarf'), setIntensity(0…1), pause(), resume(), destroy().
+// Public API: Rosie.create(canvas, options), setState('off'|'idle'|'working'|'knot'|'scarf'|'hoodie'), setIntensity(0…1), pause(), resume(), destroy().
 import { loadAssets } from './assets.js';
 import { createTexture, UNITS } from './gl.js';
 import { LightBuffer } from './LightBuffer.js';
@@ -10,7 +10,7 @@ import { Breath } from './Breath.js';
 import { Input } from './Input.js';
 import { Knot } from './Knot.js';
 
-const isKnotState = s => s === 'knot' || s === 'scarf';
+const isKnotState = s => s === 'knot' || s === 'scarf' || s === 'hoodie';
 
 export class Rosie {
   static async create(canvas, options = {}) {
@@ -43,10 +43,11 @@ export class Rosie {
       createTexture(g, UNITS.knotDep, assets.knot.variants.knot.depth),
     ];
     // the scarf's textures wait unbound; showVariant() puts the right pair on the knot units
-    this.variantTex = { knot: this.textures.slice(3, 5), scarf: [
-      createTexture(g, UNITS.knotArt, assets.knot.variants.scarf.art),
-      createTexture(g, UNITS.knotDep, assets.knot.variants.scarf.depth)] };
-    this.textures.push(...this.variantTex.scarf);
+    this.variantTex = { knot: this.textures.slice(3, 5) };
+    for (const [k, v] of Object.entries(assets.knot.variants)) if (k !== 'knot') {
+      this.variantTex[k] = [createTexture(g, UNITS.knotArt, v.art), createTexture(g, UNITS.knotDep, v.depth)];
+      this.textures.push(...this.variantTex[k]);
+    }
     this.showVariant('knot');
     this.light = new LightBuffer(g, UNITS.light);
     this.back = new ScenePass(g, assets.spans, false, detail);
