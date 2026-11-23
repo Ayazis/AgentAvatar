@@ -30,5 +30,5 @@
   .tune summary .muted { display: none; }
   .tune-actions { padding: 8px; }
 }
-@media (max-height: 520px) { footer { display: none; } }
+
 .tune-actions button { padding: 6px 9px; font-size: 11px; }
