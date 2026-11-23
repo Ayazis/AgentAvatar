@@ -19,8 +19,8 @@ export class Dust {
   static capacity() { return MAX.dust*TRAIL; }
 
   update(dt, f, put) {
-    const { t, alive, audio, pulse, T } = f;
-    this.clock += dt*(T.dustSpeed + .8*audio)*(.1 + .9*alive);
+    const { t, alive, intensity, pulse, T } = f;
+    this.clock += dt*(T.dustSpeed + .8*intensity)*(.1 + .9*alive);
     const frac = T.dustOn > .002 ? T.dustAmount/MAX.dust : 0;
     for (const p of this.points) {
       if (p.d >= frac) continue;
@@ -30,7 +30,7 @@ export class Dust {
       const a0 = p.ph + this.clock*p.sp*(.09/r);
       const ci = Math.cos(p.incl), si = Math.sin(p.incl), cn = Math.cos(p.node + t*.05), sn = Math.sin(p.node + t*.05);
       const tw = .7 + .3*Math.sin(t*3 + p.k);
-      const bright = T.dustOn*T.dustBright*p.a*tw*Math.min(1, r/.06)*alive*(1 + .5*audio);
+      const bright = T.dustOn*T.dustBright*p.a*tw*Math.min(1, r/.06)*alive*(1 + .5*intensity);
       for (let k = 0; k < TRAIL; k++) {
         const a = a0 - k*Math.sign(p.sp)*.035*(.5 + .5*T.dustSpeed)*(.09/r)*6;
         const lx = Math.cos(a)*r, lz = Math.sin(a)*r;

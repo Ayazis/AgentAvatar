@@ -1,4 +1,4 @@
-/* State buttons and the audio level bar under the stage */
+/* State buttons and the intensity slider under the stage */
 .controls {
   display: flex; align-items: center; justify-content: space-between; gap: 30px;
   padding: 24px 28px; background: #17121a;

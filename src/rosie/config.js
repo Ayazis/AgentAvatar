@@ -4,7 +4,7 @@
 export const ORB = { x: .5, y: .565 };
 
 // particle budgets: the sliders choose how many of these are shown
-export const MAX = { orb: 2800, rib: 4500, dust: 2100 };
+export const MAX = { orb: 6000, rib: 9000, dust: 5000 };
 
 export const TRANSITION_DEFAULT = 2.5;   // seconds
 
