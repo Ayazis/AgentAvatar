@@ -1,8 +1,10 @@
 // The Tune panel: edits the preset of the current state; the sliders follow the live values as they glide.
-import { TUNE_DEFAULTS, TRANSITION_DEFAULT, presetFor } from '../../rosie/config.js';
+import { TUNE_DEFAULTS, TRANSITION_DEFAULT, STATES, presetFor } from '../../rosie/config.js';
 import { GROUPS } from './groups.js';
 import { slider, groupSwitch } from './controls.js';
 import { save, restore, exportTune } from './storage.js';
+
+const LABEL = { off: 'Standby', idle: 'Idle', working: 'Working', knot: 'Knotted' };
 
 export class TunePanel {
   constructor(rosie, root = document) {
@@ -47,7 +49,7 @@ export class TunePanel {
       Object.assign(this.preset, TUNE_DEFAULTS[this.name]); this.save(); });
     root.querySelector('#tuneResetAll').addEventListener('click', () => {
       const p = this.rosie.presets;
-      Object.assign(p.idle, TUNE_DEFAULTS.idle); Object.assign(p.working, TUNE_DEFAULTS.working);
+      for (const s of STATES) Object.assign(p[s], TUNE_DEFAULTS[s]);
       this.rosie.transition = TRANSITION_DEFAULT; this.save(); });
     const copy = root.querySelector('#tuneCopy');
     copy.addEventListener('click', async () => {
@@ -62,7 +64,7 @@ export class TunePanel {
   loop = () => {
     const name = this.name;
     if (name !== this.lastName) {
-      this.lastName = name; this.editing.textContent = name === 'working' ? 'Working' : 'Idle';
+      this.lastName = name; this.editing.textContent = LABEL[name];
       this.syncs.forEach(f => f());
     } else if (this.rosie.gliding || !this.settled) {
       this.syncs.forEach(f => f()); this.settled = !this.rosie.gliding;

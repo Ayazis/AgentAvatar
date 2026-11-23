@@ -1,74 +1,57 @@
-// The idle ⇄ knot flipbook: ChatGPT's hand-drawn frames (assets/knot/, built by tools/build_knot.py),
-// played on a 2D canvas laid over the WebGL one. Hard cuts by default; `blend` (0…1) cross-fades
-// into the next frame over that last share of each hold.
-// While a frame is on screen the shader's own jacket is hidden (see `cover`).
+// Idle ⇄ knot: no in-between frames. The jacket does a fast 720° turn about its vertical axis and comes
+// out of it knotted (and back again). The swap happens while the jacket is edge-on, so it is never seen.
+// The turn and the knotted jacket are drawn by the jacket shader (shaders/jacket.glsl.js), so the knotted
+// jacket gets the same cloth motion, tilt, lighting and occlusion as the other poses. This class only keeps
+// time and loads the knotted jacket's textures (built by tools/build_knot.py from ChatGPT's last frame).
+// `blur` (0…1) smears each frame over the turn it covers, so the spin reads as motion, not a strobe.
 const base = new URL('../../assets/knot/', import.meta.url);
+
+const TURN = 4*Math.PI;            // 720°
+const SWAP = 2.5*Math.PI;          // edge-on after 1¼ turns: switch idle ⇄ knot here
+const DURATION = 1.1;              // seconds at speed 1
+const SAMPLES = 12;                // motion-blur samples per frame at full blur (the shader's loop limit)
 
 const image = src => new Promise((ok, fail) => {
   const img = new Image();
   img.onload = () => ok(img);
   img.onerror = () => fail(Error('Could not load ' + src));
-  img.src = src;
+  img.src = new URL(src, base).href;
 });
+
+// slow start, fast middle, a soft landing
+const ease = p => p < .5 ? 4*p*p*p : 1 - Math.pow(-2*p + 2, 3)/2;
 
 export class Knot {
   static async load() {
-    const meta = await fetch(new URL('knot.json', base)).then(r => { if (!r.ok) throw Error('Could not load knot.json'); return r.json(); });
-    const images = await Promise.all(meta.frames.map(f => image(new URL(f.file, base).href)));
-    return new Knot(meta, images);
+    const [meta, art, depth] = await Promise.all([
+      fetch(new URL('knot.json', base)).then(r => { if (!r.ok) throw Error('Could not load knot.json'); return r.json(); }),
+      image('knot.webp'), image('knot-depth.webp'),
+    ]);
+    return new Knot(meta.box, art, depth);
   }
 
-  constructor(meta, images) {
-    this.box = meta.box;                       // where the frames sit, in picture coords (st)
-    this.holds = meta.frames.map(f => f.ms/1000);
-    this.images = images;
-    this.last = images.length - 1;
-    this.frame = -1;                           // -1: not shown, the shader jacket is visible
-    this.target = -1; this.wait = 0;
-    this.canvas = null;
+  constructor(box, art, depth) {
+    this.box = box;                            // where the knotted jacket sits, in picture coords (st)
+    this.art = art; this.depth = depth;
+    this.p = 0; this.target = 0;               // turn progress 0 (idle) … 1 (knotted)
+    this.prev = 0;                             // progress at the last drawn frame, for the blur
   }
 
-  // put the overlay canvas over the WebGL canvas
-  attach(glCanvas) {
-    const c = this.canvas = document.createElement('canvas');
-    c.className = 'knot-layer'; c.setAttribute('aria-hidden', 'true');
-    glCanvas.after(c);
-    this.ctx = c.getContext('2d');
-  }
-
-  // knotted: play towards the last frame; otherwise play back to idle and hide
-  set knotted(on) { this.target = on ? this.last : -1; if (on && this.frame < 0) { this.frame = 0; this.wait = this.holds[0]; } }
-  get knotted() { return this.target === this.last; }
-  get cover() { return this.frame >= 0; }     // a frame is showing: hide the shader jacket
-  get busy() { return this.frame !== this.target && !(this.target < 0 && this.frame < 0); }
+  set knotted(on) { this.target = on ? 1 : 0; }
+  get knotted() { return this.target === 1; }
+  get active() { return this.p > 0 || this.target > 0; }   // turning or knotted
+  get busy() { return this.p !== this.target; }
 
   update(dt, speed = 1) {
-    if (this.frame === this.target) return;
-    this.wait -= dt*speed;
-    while (this.wait <= 0 && this.frame !== this.target) {
-      this.frame += this.target > this.frame ? 1 : -1;
-      this.wait += this.frame >= 0 ? this.holds[this.frame] : 0;
-    }
+    this.prev = this.p;
+    const step = dt*speed/DURATION;
+    this.p = this.target > this.p ? Math.min(this.target, this.p + step) : Math.max(this.target, this.p - step);
   }
 
-  // scale: the jacket's picture height as a fraction of the canvas height (same formula as the shader)
-  draw(width, height, scale, blend = 0) {
-    const c = this.canvas, ctx = this.ctx;
-    if (c.width !== width || c.height !== height) { c.width = width; c.height = height; }
-    ctx.clearRect(0, 0, width, height);
-    if (this.frame < 0) return;
-    const P = scale*height, b = this.box;
-    const x = width/2 + (b.x - .5)/1.5*P, y = height/2 - (.5 - b.y)*P;
-    const w = b.w/1.5*P, h = b.h*P;
-    ctx.globalAlpha = 1;
-    ctx.drawImage(this.images[this.frame], x, y, w, h);
-    const next = this.frame + (this.target > this.frame ? 1 : -1);
-    if (blend > 0 && this.frame !== this.target && next >= 0) {
-      const p = 1 - Math.max(0, this.wait)/this.holds[this.frame];   // how far through this hold
-      const a = Math.min(1, Math.max(0, (p - (1 - blend))/blend));
-      if (a > 0) { ctx.globalAlpha = a; ctx.drawImage(this.images[next], x, y, w, h); ctx.globalAlpha = 1; }
-    }
+  // for the shader: knotBox, and knotSpin = (angle now, angle at the blur's far end, samples, swap angle)
+  uniforms(blur = 1) {
+    const now = ease(this.p)*TURN, from = ease(this.prev)*TURN;
+    const n = blur > 0 && from !== now ? Math.max(1, Math.round(SAMPLES*blur)) : 1;
+    return { box: this.box, spin: [now, now + (from - now)*blur, n, SWAP] };
   }
-
-  destroy() { this.canvas?.remove(); }
 }

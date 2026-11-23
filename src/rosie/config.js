@@ -12,7 +12,7 @@ export const TRANSITION_DEFAULT = 2.5;   // seconds
 export const POSE = { off: 0, idle: 1, working: 2, knot: 1 };   // knot: idle pose, then the knot flipbook
 
 // One preset per state. Switching state glides every value from one preset to the other.
-// Off uses the idle preset and dims the light.
+// Off and Knot start as copies of Idle; Off also dims the light on its own.
 const IDLE = {
   silkOn: 1, silkBright: 1, silkWidth: 1, silkSway: 1, silkSpeed: 1, sparks: 1, sparkSpeed: 1,
   ringSize: 1.55, ringTilt: 18, ringRoll: -20, ringDepth: 0,
@@ -20,14 +20,19 @@ const IDLE = {
   ribOn: 1, ribCount: 3, ribAmount: 1500, ribSpeed: 1, ribBright: 1, ribWidth: 1, ribOrbit: 1,
   dustOn: 1, dustAmount: 700, dustSpeed: 1, dustBright: 1,
   jacketMotion: 1, jacketSpeed: 1, breathRate: 1, pSize: 1, tilt: 1,
-  knotBlend: 0, knotSpeed: 1,   // knot flipbook: cross-fade share of each frame (0 = hard cuts), playback speed
+  denimLight: 1, lightSpread: 1,   // how much the particles light the denim, and how far their light reaches
+  knotBlur: 1, knotSpeed: 1,    // idle ⇄ knot turn: motion blur (0 = sharp), turn speed
 };
+
+export const STATES = ['off', 'idle', 'working', 'knot'];
 
 export const TUNE_DEFAULTS = {
+  off: IDLE,
   idle: IDLE,
+  knot: IDLE,
   working: { ...IDLE, silkBright: 1.15, silkWidth: 1.05, sparks: 1.5, sparkSpeed: 3.1,
     orbSpin: 4.2, orbGlow: 1.45, ribSpeed: 2.6, ribWidth: 1.25, dustSpeed: 2.6, dustBright: 1.6,
-    jacketMotion: 1.8, jacketSpeed: 1.7, breathRate: 1.37 },
+    denimLight: 1.25, jacketMotion: 1.8, jacketSpeed: 1.7, breathRate: 1.37 },
 };
 
-export const presetFor = state => state === 'working' ? 'working' : 'idle';
+export const presetFor = state => state in TUNE_DEFAULTS ? state : 'idle';

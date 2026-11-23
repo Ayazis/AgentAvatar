@@ -1,10 +1,10 @@
 // The full-screen shader passes: the back pass (jacket, orb light, far half of the ring)
 // and the front pass (near half of the ring, laid over the particles).
-import { createProgram, uniforms, bindJacketSamplers } from './gl.js';
+import { createProgram, uniforms, bindJacketSamplers, setKnotUniforms, UNITS } from './gl.js';
 import { QUAD_VERT } from './shaders/quad.vert.js';
 import { sceneFrag } from './shaders/scene.frag.js';
 
-const NAMES = ['scene', 'motion', 'tap', 'res', 'detail', 'pose', 'silkT', 'tuneA', 'tuneB', 'tuneC', 'cover'];
+const NAMES = ['scene', 'motion', 'tap', 'res', 'detail', 'pose', 'silkT', 'tuneA', 'tuneB', 'tuneC', 'lightAmt'];
 const D2R = Math.PI/180;
 
 export class ScenePass {
@@ -15,6 +15,7 @@ export class ScenePass {
     this.u = uniforms(g, this.program, NAMES);
     this.loc = g.getAttribLocation(this.program, 'p');
     g.uniform1f(this.u.detail, detail);
+    g.uniform1i(g.getUniformLocation(this.program, 'lightTex'), UNITS.light);
   }
 
   // f: frame values; quad: the shared full-screen triangle buffer
@@ -32,7 +33,8 @@ export class ScenePass {
     g.uniform4f(u.tuneA, T.silkBright, T.silkWidth, T.silkSway, T.jacketMotion);
     g.uniform4f(u.tuneB, T.orbOn*T.orbGlow, T.sparks, T.orbSize, T.silkOn);
     g.uniform4f(u.tuneC, T.ringSize, T.ringTilt*D2R, T.ringRoll*D2R, T.ringDepth);
-    g.uniform1f(u.cover, f.cover);
+    setKnotUniforms(g, this.program, f.knot);
+    g.uniform1f(u.lightAmt, T.denimLight);
     g.drawArrays(g.TRIANGLES, 0, 3);
   }
 
