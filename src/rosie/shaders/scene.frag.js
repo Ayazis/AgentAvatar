@@ -17,6 +17,7 @@ uniform vec4 tuneC;   // silk ring: radius (× orb), tilt, roll (radians), depth
 uniform vec2 res;
 uniform float detail;
 uniform sampler2D lightTex;  // the particles' light, drawn soft at low resolution
+uniform float shadeAmt;      // orb light raking over the folds: shading, sheen and rim glow
 uniform float lightAmt;      // how strongly that light falls on the denim`;
 
 // near half of the ring: premultiplied, over the particles
@@ -30,13 +31,34 @@ const FRONT_BODY = `
 const BACK_BODY = `
   // ── denim: the hanging cloth (sway, tilt, flutter: clothed() in jacket.glsl.js)
   vec3 m;
-  vec4 jk = jacket(clothed(st), m);
+  vec2 sc = clothed(st);
+  vec4 jk = jacket(sc, m);
   float den = m.r;
   vec3 col = mix(bgc, jk.rgb, den);
   // ── the particles' light on the denim: raised folds and lighter fabric catch more of it
   vec3 pl = texture2D(lightTex, uv).rgb;
   float catchL = .3 + 1.4*dot(jk.rgb, vec3(.3,.5,.2)) + .5*m.g;
   col += (1. - exp(-pl*3.))*den*catchL*lightAmt*.35;   // soft-clipped so dense swirls glow, not burn
+
+  // ── the orb lights the cloth from inside: the depth map gives the folds a surface, so light rakes across them
+  if (shadeAmt > .001 && den > .002) {
+    float e = .004;
+    float gx = M(sc + vec2(e, 0.)).g - M(sc - vec2(e, 0.)).g, gy = M(sc + vec2(0., e)).g - M(sc - vec2(0., e)).g;
+    vec3 n = normalize(vec3(-gx*6., -gy*6., 1.));
+    vec2 toO = (vec2(ORB_X, ORB_Y) - sc)*vec2(.6667, 1.);
+    float dist = length(toO);
+    vec3 Ld = normalize(vec3(toO.x, -toO.y, .16));                         // y flips: picture y runs down
+    float lam = max(dot(n, Ld), 0.);
+    float reach = exp(-dist*2.6)*awake;                                     // nearer the orb, brighter
+    float spec = pow(max(dot(n, normalize(Ld + vec3(0., 0., 1.))), 0.), 24.);
+    float fold = clamp(abs(gx) + abs(gy), 0., .25)*4.;                       // creases catch the most
+    float live = .75 + .25*breath + .35*intensity + .3*pulse;
+    vec3 lit = rose*(lam*.5 + fold*.35) + vec3(1., .78, .84)*spec*.55;
+    col += lit*reach*live*den*tuneB.x*shadeAmt*.5;
+    // rim: the thin outer edge of the cloth glows where it is lit from behind
+    float edge = den*(1. - smoothstep(.3, .95, den)) + (1. - m.g)*.0;
+    col += rose*edge*reach*live*shadeAmt*tuneB.x*.35;
+  }
 
   // ── the orb's light: a warm core glowing from inside the jacket
   vec2 dOrb = (st - vec2(ORB_X, ORB_Y))*vec2(.6667, 1.);

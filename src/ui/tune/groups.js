@@ -19,7 +19,8 @@ export const GROUPS = [
   ['Scene', null, [
     ['jacketMotion', 'Jacket motion', 0, 5, .05], ['jacketSpeed', 'Jacket speed', 0, 6, .05], ['breathRate', 'Breathing', .1, 5, .05],
     ['pSize', 'Particle size', .1, 5, .05], ['tilt', 'Tilt follow', 0, 4, .05],
-    ['denimLight', 'Light on denim', 0, 6, .05], ['lightSpread', 'Light spread', .1, 6, .05]]],
+    ['denimLight', 'Light on denim', 0, 6, .05], ['lightSpread', 'Light spread', .1, 6, .05],
+    ['denimShade', 'Orb relight', 0, 4, .05]]],
   ['Knot', null, [
     ['knotBlur', 'Motion blur', 0, 1, .05], ['knotSpeed', 'Speed', .1, 6, .05]]],
 ];
