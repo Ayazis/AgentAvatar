@@ -1,7 +1,7 @@
-// The Off / Idle / Working / Knot buttons, keys 1–4, and the status label.
+// The Off / Idle / Working / Knot / Scarf / Hoodie buttons, keys 1–6, and the status label.
 import { STATES } from '../rosie/config.js';
 
-const LABEL = { off: 'Standby', idle: 'Idle', working: 'Working', knot: 'Knotted' };
+const LABEL = { off: 'Standby', idle: 'Idle', working: 'Working', knot: 'Knotted', scarf: 'Scarf', hoodie: 'Hoodie' };
 
 export class StateBar {
   constructor(rosie, root = document) {

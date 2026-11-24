@@ -4,7 +4,7 @@ import { createProgram, uniforms, jacketUniforms, UNITS } from './gl.js';
 import { QUAD_VERT } from './shaders/quad.vert.js';
 import { sceneFrag } from './shaders/scene.frag.js';
 
-const NAMES = ['scene', 'motion', 'tap', 'res', 'detail', 'silkT', 'tuneA', 'tuneB', 'tuneC', 'lightAmt'];
+const NAMES = ['scene', 'motion', 'tap', 'res', 'detail', 'silkT', 'tuneA', 'tuneB', 'tuneC', 'lightAmt', 'shadeAmt'];
 const D2R = Math.PI/180;
 
 export class ScenePass {
@@ -34,6 +34,7 @@ export class ScenePass {
     g.uniform4f(u.tuneC, T.ringSize, T.ringTilt*D2R, T.ringRoll*D2R, T.ringDepth);
     this.setJacket(f);
     g.uniform1f(u.lightAmt, T.denimLight);
+    g.uniform1f(u.shadeAmt, T.denimShade);
     g.drawArrays(g.TRIANGLES, 0, 3);
   }
 
