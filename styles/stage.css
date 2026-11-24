@@ -6,6 +6,9 @@
 }
 .section { position: absolute; z-index: 1; left: 24px; right: 24px; top: 22px; pointer-events: none; }
 .section .brand { font: italic 26px Georgia, serif; letter-spacing: -1.5px; text-transform: none; color: #f3eaf0; margin-right: 8px; }
+.section .right { display: flex; align-items: center; gap: 16px; }
+.section a { pointer-events: auto; color: #c49bb1; text-decoration: none; border-bottom: 1px solid #5a4258; }
+.section a:hover, .section a:focus-visible { color: #ffcede; border-color: #ffcede; }
 .section b { color: #c49bb1; font-weight: normal; }
 .stage canvas { display: block; width: 100%; height: 100%; cursor: crosshair; touch-action: none; }
 
@@ -16,5 +19,7 @@ body[data-state=off] .dot { background: #726975; box-shadow: none; }
 @media (max-width: 740px) {
   .section .brand { font-size: 22px; }
   .section .muted { display: none; }
+  .section .right { gap: 10px; }
+  .section a { font-size: 8px; }
   .section { left: 14px; right: 14px; top: 14px; }
 }
