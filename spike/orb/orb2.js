@@ -6,6 +6,7 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { createDenimBand } from './cloth.js?v=2';
 
 const $ = (id) => document.getElementById(id);
 const ORANGE = new THREE.Color('#ff8a1f');
@@ -448,6 +449,11 @@ filament({ radius: 0.8, arc: 2.8, color: CYAN, tilt: [2.0, 0.2, 0.9], speed: 1.3
 filament({ radius: 1.1, arc: 2.2, color: ORANGE, tilt: [0.2, 0.8, 1.2], speed: -1.1, beads: 30 });
 filament({ radius: 1.5, arc: 2.0, color: CYAN, tilt: [1.6, 0.9, 0.3], speed: 0.7, beads: 34 });
 
+// ---------- denim band ----------
+const band = createDenimBand();
+orb.add(band.group);
+spin(band.group, [0.2, 1, 0.3], 0.09);
+
 // ---------- postprocessing ----------
 const composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene, camera));
@@ -496,8 +502,10 @@ renderer.setAnimationLoop(() => {
   lensGlass.scale.setScalar(pulse);
   coreLight.intensity = 3.2 * pulse;
   orb.rotation.y += dt * 0.07 * k;
+  band.update(t);
   controls.update();
   composer.render();
   frames++; acc += dt;
   if (acc > 0.5) { $('fps').textContent = Math.round(frames / acc); frames = 0; acc = 0; }
 });
+
