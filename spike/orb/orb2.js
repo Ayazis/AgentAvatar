@@ -48,12 +48,12 @@ const pmrem = new THREE.PMREMGenerator(renderer);
 }
 
 const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 60);
-camera.position.set(0.3, 0.5, 6.4);
+camera.position.set(0.3, 0.6, 8.6);
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.enablePan = false;
 controls.minDistance = 3;
-controls.maxDistance = 11;
+controls.maxDistance = 13;
 
 const coreLight = new THREE.PointLight(ORANGE, 3.2, 3.6, 2);
 scene.add(coreLight);
