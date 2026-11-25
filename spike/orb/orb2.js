@@ -6,7 +6,7 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { createDenimBand } from './cloth.js?v=2';
+import { createDenimBand } from './cloth.js?v=6';
 
 const $ = (id) => document.getElementById(id);
 const ORANGE = new THREE.Color('#ff8a1f');
@@ -48,7 +48,7 @@ const pmrem = new THREE.PMREMGenerator(renderer);
 }
 
 const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 60);
-camera.position.set(0.3, 0.6, 8.6);
+camera.position.set(0.3, 0.6, 7.7);
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.enablePan = false;
@@ -121,7 +121,7 @@ function ringBand(rIn, rOut, depth, { holes = 0, holeR = 0, bevel = depth * 0.2 
     h.absarc(Math.cos(a) * mid, Math.sin(a) * mid, holeR, 0, TAU, true);
     s.holes.push(h);
   }
-  const g = new THREE.ExtrudeGeometry(s, { depth, bevelEnabled: true, bevelThickness: bevel, bevelSize: bevel * 0.8, bevelSegments: 1, curveSegments: 20 });
+  const g = new THREE.ExtrudeGeometry(s, { depth, bevelEnabled: true, bevelThickness: bevel, bevelSize: bevel * 0.8, bevelSegments: 1, curveSegments: 16 });
   g.translate(0, 0, -depth / 2);
   return g;
 }
@@ -156,7 +156,7 @@ function bladeGeo(R, len, width, thick, notches = []) {
   const ss = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
   const hw = (u) => {
     let w = width * Math.pow(1 - u, 0.7) * (0.45 + 0.55 * Math.sin(Math.min(1, u * 2.4) * Math.PI / 2));
-    for (const [u0, u1, f] of notches) w *= 1 - (1 - f) * ss(u0 - 0.012, u0 + 0.012, u) * (1 - ss(u1 - 0.012, u1 + 0.012, u));
+    for (const [u0, u1, f] of notches) w *= 1 - (1 - f) * ss(u0 - 0.04, u0 + 0.04, u) * (1 - ss(u1 - 0.04, u1 + 0.04, u));
     return w;
   };
   const P = [], UV = [], idx = [];
@@ -230,11 +230,23 @@ function ring({ rIn, rOut, depth, tilt, speed, holes = 0, domes = 0, axis = [0, 
   spin(rotor, axis, speed);
 }
 
-// Four big perforated bands at different tilts, as in the reference render.
-ring({ rIn: 1.02, rOut: 1.2, depth: 0.04, tilt: [1.25, 0.2, 0.3], speed: 0.22, holes: 40, domes: 8 });
-ring({ rIn: 0.86, rOut: 1.0, depth: 0.04, tilt: [0.2, 1.1, 0.5], speed: -0.3, holes: 34, domes: 6 });
-ring({ rIn: 1.28, rOut: 1.42, depth: 0.035, tilt: [0.5, 0.3, 1.5], speed: 0.15, holes: 46, domes: 8 });
-ring({ rIn: 0.66, rOut: 0.78, depth: 0.035, tilt: [1.7, 0.9, 0.1], speed: -0.42, holes: 26, domes: 6 });
+// Seven perforated bands layered tightly, plus thin wire hoops, like the dense cage in the reference.
+ring({ rIn: 1.02, rOut: 1.22, depth: 0.05, tilt: [1.25, 0.2, 0.3], speed: 0.22, holes: 40, domes: 8 });
+ring({ rIn: 0.86, rOut: 1.02, depth: 0.05, tilt: [0.2, 1.1, 0.5], speed: -0.3, holes: 34, domes: 6 });
+ring({ rIn: 1.28, rOut: 1.48, depth: 0.045, tilt: [0.5, 0.3, 1.5], speed: 0.15, holes: 46, domes: 8 });
+ring({ rIn: 0.66, rOut: 0.82, depth: 0.045, tilt: [1.7, 0.9, 0.1], speed: -0.42, holes: 26, domes: 6 });
+ring({ rIn: 1.1, rOut: 1.28, depth: 0.045, tilt: [0.9, -0.8, 1.1], speed: 0.18, holes: 42, domes: 8 });
+ring({ rIn: 0.74, rOut: 0.9, depth: 0.04, tilt: [-0.4, 0.6, 2.0], speed: -0.25, holes: 30, domes: 6 });
+ring({ rIn: 1.32, rOut: 1.5, depth: 0.04, tilt: [1.9, -0.3, 0.7], speed: -0.12, holes: 50, domes: 8 });
+for (const [r, tilt, sp] of [[0.95, [0.3, 0.2, 0.9], 0.3], [1.15, [1.4, 1.2, 0.2], -0.22], [1.38, [0.1, 1.5, 1.0], 0.16],
+  [0.78, [1.0, 0.4, 1.6], -0.35], [1.22, [2.2, 0.7, 0.4], 0.12]]) {
+  const holder = new THREE.Group();
+  holder.rotation.set(...tilt);
+  const hoop = new THREE.Mesh(new THREE.TorusGeometry(r, 0.014, 6, 64), bronze);
+  holder.add(hoop);
+  orb.add(holder);
+  spin(hoop, [0, 0, 1], sp);
+}
 
 // ----- pods and axle fittings (all built along +Y, pointing outward) -----
 function podLens(cyan = false) {
@@ -298,7 +310,7 @@ function finial() {
   return g;
 }
 
-function axle(dir, len, endA, endB, collars = [-0.55, -0.3, 0.3, 0.55]) {
+function axle(dir, len, endA, endB, collars = [-0.72, -0.58, -0.44, -0.3, 0.3, 0.44, 0.58, 0.72]) {
   const g = new THREE.Group();
   g.add(new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, len, 14), bronze));
   collars.forEach((t, i) => {
@@ -336,33 +348,46 @@ const axles = [
   axle([1, -0.12, 0.25], 2.6, () => podLens(false), () => podLens(true)),
   axle([0.15, 0.2, 1], 2.45, () => podLens(false), podLantern),
   axle([-0.8, 0.55, 0.45], 2.3, () => podLens(false), podDish),
+  axle([0.7, 0.3, -0.8], 2.2, podLantern, () => podLens(true)),
+  axle([-0.3, -0.9, 0.5], 2.0, () => podLens(false), podDish),
 ];
 axles.forEach((a, i) => spin(a, [0.2, 1, 0.1], 0.07 * (i % 2 ? -1 : 1)));
 
-// ----- core: amber lens in gimballed bronze rings, wrapped in a drum of spoked gears -----
+// ----- core: small amber lens in gimballed bronze rings, buried in a drum of stacked spoked gears -----
 const core = new THREE.Group();
 orb.add(core);
-const lensGlass = new THREE.Mesh(new THREE.SphereGeometry(0.2, 40, 28),
-  new THREE.MeshBasicMaterial({ color: ORANGE.clone().multiplyScalar(1.5), toneMapped: false }));
-const lensHot = new THREE.Mesh(new THREE.SphereGeometry(0.07, 20, 16),
-  new THREE.MeshBasicMaterial({ color: new THREE.Color(4, 3, 1.6), toneMapped: false }));
+const lensGlass = new THREE.Mesh(new THREE.SphereGeometry(0.115, 32, 24),
+  new THREE.MeshBasicMaterial({ color: ORANGE.clone().multiplyScalar(1.1), toneMapped: false }));
+const lensHot = new THREE.Mesh(new THREE.SphereGeometry(0.04, 16, 12),
+  new THREE.MeshBasicMaterial({ color: new THREE.Color(2.6, 2.0, 1.2), toneMapped: false }));
 core.add(lensGlass, lensHot);
 coreLight.position.set(0, 0, 0);
 for (const rot of [[0, 0, 0], [Math.PI / 2, 0, 0], [0, Math.PI / 2, 0]]) {
-  const r = new THREE.Mesh(ringBand(0.25, 0.31, 0.05), bronze);
+  const r = new THREE.Mesh(ringBand(0.15, 0.21, 0.05), bronze);
   r.rotation.set(...rot);
   core.add(r);
 }
-[[0.56, 20, 0.04, [0, 0, 0], 0.5], [0.5, 18, 0.04, [Math.PI / 2, 0, 0.3], -0.55], [0.44, 16, 0.04, [0.4, Math.PI / 2, 0], 0.6],
-  [0.4, 14, 0.035, [1.1, 0.5, 0.2], -0.7], [0.36, 12, 0.035, [0.2, 1.1, 0.9], 0.8], [0.62, 22, 0.03, [0.7, 0.2, 1.3], -0.4]]
-  .forEach(([r, t, d, rot, sp]) => {
+// three stacks of gears, one per axis, so the core reads as a dense drum
+const drumRot = [[0, 0, 0], [Math.PI / 2, 0, 0], [0, Math.PI / 2, 0]];
+drumRot.forEach((rot, a) => {
+  [[0.5, 20], [0.42, 17], [0.35, 14], [0.58, 22]].forEach(([r, teeth], i) => {
     const holder = new THREE.Group();
     holder.rotation.set(...rot);
-    const m = new THREE.Mesh(spokedGear(r, t, d), bronze);
+    const m = new THREE.Mesh(spokedGear(r * (1 - a * 0.06), teeth, 0.034), i % 2 ? steel : bronze);
+    m.position.z = (i - 1.5) * 0.065;
     holder.add(m);
     core.add(holder);
-    spin(m, [0, 0, 1], sp);
+    spin(m, [0, 0, 1], (0.45 + i * 0.12) * (i % 2 ? -1 : 1) * (a % 2 ? -1 : 1));
   });
+});
+[[0.34, 12, [1.1, 0.5, 0.2], -0.7], [0.3, 11, [0.2, 1.1, 0.9], 0.8]].forEach(([r, t, rot, sp]) => {
+  const holder = new THREE.Group();
+  holder.rotation.set(...rot);
+  const m = new THREE.Mesh(spokedGear(r, t, 0.03), bronze);
+  holder.add(m);
+  core.add(holder);
+  spin(m, [0, 0, 1], sp);
+});
 
 // ----- blades: notched steel plates with a glowing orange edge -----
 function blade(R, len, width, thick, notches, tilt, speed, axis) {
@@ -377,11 +402,11 @@ function blade(R, len, width, thick, notches, tilt, speed, axis) {
   orb.add(holder);
   spin(holder, axis, speed);
 }
-blade(1.62, 1.15, 0.5, 0.045, [[0.34, 0.46, 0.5], [0.62, 0.7, 0.68]], [0.4, 0.2, 2.4], 0.14, [0.3, 1, 0.2]);
-blade(1.68, 1.0, 0.46, 0.045, [[0.3, 0.42, 0.55], [0.56, 0.64, 0.7]], [2.6, 0.5, 0.2], -0.11, [1, 0.2, 0.3]);
-blade(1.6, 1.2, 0.42, 0.045, [[0.4, 0.5, 0.5]], [1.2, 2.4, 1.0], 0.09, [0.2, 0.4, 1]);
-blade(1.72, 0.9, 0.52, 0.05, [[0.28, 0.4, 0.55], [0.6, 0.7, 0.7]], [3.4, 1.0, 1.9], -0.13, [0.5, 1, 0.5]);
-blade(1.65, 1.05, 0.44, 0.045, [[0.36, 0.48, 0.5]], [0.8, 4.0, 0.5], 0.11, [1, 0.5, 0.1]);
+blade(1.74, 1.3, 0.42, 0.04, [[0.4, 0.5, 0.8], [0.66, 0.74, 0.86]], [0.4, 0.2, 2.4], 0.14, [0.3, 1, 0.2]);
+blade(1.8, 1.15, 0.4, 0.04, [[0.34, 0.44, 0.82], [0.6, 0.68, 0.88]], [2.6, 0.5, 0.2], -0.11, [1, 0.2, 0.3]);
+blade(1.72, 1.4, 0.36, 0.04, [[0.46, 0.56, 0.8]], [1.2, 2.4, 1.0], 0.09, [0.2, 0.4, 1]);
+blade(1.84, 1.05, 0.44, 0.045, [[0.32, 0.42, 0.82], [0.62, 0.7, 0.88]], [3.4, 1.0, 1.9], -0.13, [0.5, 1, 0.5]);
+blade(1.77, 1.25, 0.38, 0.04, [[0.4, 0.5, 0.8]], [0.8, 4.0, 0.5], 0.11, [1, 0.5, 0.1]);
 
 // ---------- cyan filaments: thin beaded arcs ----------
 const sparkUniforms = { uTime: { value: 0 }, uPx: { value: 1 } };
@@ -395,7 +420,7 @@ const sparkMat = new THREE.ShaderMaterial({
       vec4 mv = modelViewMatrix * vec4(position,1.0);
       float tw = 0.6 + 0.4 * sin(uTime * (2.0 + aPhase * 5.0) + aPhase * 40.0);
       vTw = tw; vColor = aColor;
-      gl_PointSize = aSize * uPx * (0.7 + 0.5 * tw) * (31.0 / -mv.z);
+      gl_PointSize = aSize * uPx * (0.7 + 0.5 * tw) * (38.0 / -mv.z);
       gl_Position = projectionMatrix * mv;
     }`,
   fragmentShader: `
@@ -408,14 +433,14 @@ const sparkMat = new THREE.ShaderMaterial({
     }`,
 });
 
-function filament({ radius, arc, color, tilt, speed, beads = 46, wobble = 0.05 }) {
+function filament({ radius, arc, color, tilt, speed, beads = 120, wobble = 0.06 }) {
   const pos = new Float32Array(beads * 3), col = new Float32Array(beads * 3), sz = new Float32Array(beads), ph = new Float32Array(beads);
   for (let i = 0; i < beads; i++) {
     const u = Math.pow(Math.random(), 1.3), a = u * arc, r = radius + (Math.random() - 0.5) * wobble * (0.4 + u);
     pos.set([Math.cos(a) * r, Math.sin(a) * r, (Math.random() - 0.5) * wobble], i * 3);
-    const f = Math.pow(1 - u, 1.1), hot = Math.random() < 0.25;
+    const f = Math.pow(1 - u, 1.1), hot = Math.random() < 0.08;
     const c = hot ? new THREE.Color('#e8fbff') : color;
-    col.set([c.r * (0.3 + f), c.g * (0.3 + f), c.b * (0.3 + f)], i * 3);
+    col.set([c.r * (0.2 + f * 0.8), c.g * (0.2 + f * 0.8), c.b * (0.2 + f * 0.8)], i * 3);
     sz[i] = (hot ? 2.4 : 1.0 + Math.random() * 0.8) * (0.5 + f * 0.7);
     ph[i] = Math.random();
   }
@@ -427,7 +452,7 @@ function filament({ radius, arc, color, tilt, speed, beads = 46, wobble = 0.05 }
   const pts = new THREE.Points(g, sparkMat);
   const N = 120, lp = new Float32Array(N * 3), lc = new Float32Array(N * 3);
   for (let i = 0; i < N; i++) {
-    const u = i / (N - 1), a = u * arc, f = Math.pow(1 - u, 1.4) * 0.9, w = Math.sin(u * 9) * wobble * 0.3;
+    const u = i / (N - 1), a = u * arc, f = Math.pow(1 - u, 1.2) * 1.5, w = Math.sin(u * 9) * wobble * 0.3;
     lp.set([Math.cos(a) * (radius + w), Math.sin(a) * (radius + w), 0], i * 3);
     lc.set([color.r * f, color.g * f, color.b * f], i * 3);
   }
@@ -443,11 +468,14 @@ function filament({ radius, arc, color, tilt, speed, beads = 46, wobble = 0.05 }
   orb.add(holder);
   spin(rotor, [0, 0, 1], speed);
 }
-filament({ radius: 1.0, arc: 3.4, color: CYAN, tilt: [1.0, 0.3, 0.4], speed: 1.0 });
-filament({ radius: 1.2, arc: 3.0, color: CYAN, tilt: [0.4, 1.2, 1.9], speed: -0.8 });
-filament({ radius: 0.8, arc: 2.8, color: CYAN, tilt: [2.0, 0.2, 0.9], speed: 1.3 });
-filament({ radius: 1.1, arc: 2.2, color: ORANGE, tilt: [0.2, 0.8, 1.2], speed: -1.1, beads: 30 });
-filament({ radius: 1.5, arc: 2.0, color: CYAN, tilt: [1.6, 0.9, 0.3], speed: 0.7, beads: 34 });
+filament({ radius: 1.0, arc: 3.6, color: CYAN, tilt: [1.0, 0.3, 0.4], speed: 1.0 });
+filament({ radius: 1.2, arc: 3.2, color: CYAN, tilt: [0.4, 1.2, 1.9], speed: -0.8 });
+filament({ radius: 0.8, arc: 3.0, color: CYAN, tilt: [2.0, 0.2, 0.9], speed: 1.3 });
+filament({ radius: 1.1, arc: 2.4, color: ORANGE, tilt: [0.2, 0.8, 1.2], speed: -1.1, beads: 70 });
+filament({ radius: 1.5, arc: 2.4, color: CYAN, tilt: [1.6, 0.9, 0.3], speed: 0.7 });
+filament({ radius: 0.9, arc: 2.6, color: CYAN, tilt: [0.7, 2.1, 0.2], speed: -1.2 });
+filament({ radius: 1.35, arc: 2.2, color: CYAN, tilt: [2.4, 0.2, 1.4], speed: 0.9 });
+filament({ radius: 1.05, arc: 1.8, color: ORANGE, tilt: [1.1, 1.6, 0.6], speed: 1.0, beads: 60 });
 
 // ---------- denim band ----------
 const band = createDenimBand();
@@ -508,4 +536,5 @@ renderer.setAnimationLoop(() => {
   frames++; acc += dt;
   if (acc > 0.5) { $('fps').textContent = Math.round(frames / acc); frames = 0; acc = 0; }
 });
+
 
