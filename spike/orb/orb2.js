@@ -38,9 +38,9 @@ const pmrem = new THREE.PMREMGenerator(renderer);
       new THREE.MeshBasicMaterial({ color: new THREE.Color(color).multiplyScalar(k), side: THREE.DoubleSide }));
     m.position.set(...pos); m.lookAt(0, 0, 0); env.add(m);
   };
-  card('#ff9a50', 4, 10, [-8, 1, 3], 4);
+  card('#ffb070', 3, 10, [-8, 1, 3], 3);
   card('#e8eeff', 8, 1.4, [0, 9, 2], 7);
-  card('#38c8ff', 1.8, 7, [8, 0, -4], 3);
+  card('#9fd8ff', 1.8, 7, [8, 0, -4], 1.6);
   card('#cfd8ff', 6, 2, [-2, -8, -3], 3);
   card('#f4f6ff', 5, 5, [3, 2, 9], 4.5);
   scene.environment = pmrem.fromScene(env, 0.02).texture;
@@ -54,9 +54,9 @@ controls.enablePan = false;
 controls.minDistance = 3;
 controls.maxDistance = 11;
 
-const coreLight = new THREE.PointLight(ORANGE, 4, 7, 1.8);
+const coreLight = new THREE.PointLight(ORANGE, 3.2, 3.6, 2);
 scene.add(coreLight);
-const rimCyan = new THREE.DirectionalLight(CYAN, 1.0);
+const rimCyan = new THREE.DirectionalLight('#9fc4ff', 0.6);
 rimCyan.position.set(-3, 2, -2);
 const rimWarm = new THREE.DirectionalLight('#ffe0c8', 1.8);
 rimWarm.position.set(3, 1.5, 2.5);
@@ -74,7 +74,7 @@ function tex(name, srgb = false, rep = 1) {
 }
 // Steel: the colour map is very light, so tint it down toward the dark brushed steel of the references.
 const steel = new THREE.MeshStandardMaterial({
-  color: '#8d8f98', metalness: 1, roughness: 1, envMapIntensity: 1.1,
+  color: '#86888f', metalness: 1, roughness: 1, envMapIntensity: 1.1,
   map: tex('steel-color', true), normalMap: tex('steel-normal'), roughnessMap: tex('steel-rough'),
   normalScale: new THREE.Vector2(0.8, 0.8),
 });
@@ -87,12 +87,12 @@ const bronze = new THREE.MeshStandardMaterial({
 });
 const glow = new THREE.MeshBasicMaterial({ color: ORANGE.clone().multiplyScalar(2.2), toneMapped: false });
 const glowCyan = new THREE.MeshBasicMaterial({ color: CYAN.clone().multiplyScalar(2.0), toneMapped: false });
-const edgeGlow = new THREE.MeshBasicMaterial({ color: ORANGE.clone().multiplyScalar(2.0), toneMapped: false });
+const edgeGlow = new THREE.MeshBasicMaterial({ color: ORANGE.clone().multiplyScalar(1.5), toneMapped: false });
 
 // Blade steel: same steel, double sided, with a soft orange fresnel rim.
 const bladeSteel = steel.clone();
 bladeSteel.side = THREE.DoubleSide;
-bladeSteel.color = new THREE.Color('#7b7d86');
+bladeSteel.color = new THREE.Color('#7a7c83');
 bladeSteel.onBeforeCompile = (sh) => {
   sh.uniforms.rimColor = { value: ORANGE.clone().multiplyScalar(0.45) };
   sh.fragmentShader = sh.fragmentShader
@@ -372,7 +372,7 @@ function blade(R, len, width, thick, notches, tilt, speed, axis) {
   const { point } = g.userData;
   const pts = [];
   for (let i = 3; i <= 106; i++) pts.push(new THREE.Vector3(...point(i / 110, 1, 1)).multiplyScalar(1.003));
-  holder.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 220, 0.007, 4), edgeGlow));
+  holder.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 220, 0.0042, 4), edgeGlow));
   orb.add(holder);
   spin(holder, axis, speed);
 }
@@ -455,6 +455,7 @@ const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.6, 0.45, 0.7);
 composer.addPass(bloom);
 composer.addPass(new OutputPass());
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.15;
 
 function resize() {
   const w = innerWidth, h = innerHeight;
@@ -493,7 +494,7 @@ renderer.setAnimationLoop(() => {
   sparkUniforms.uTime.value = t;
   const pulse = 1 + Math.sin(t * 2.1) * 0.06 + Math.sin(t * 5.3) * 0.025;
   lensGlass.scale.setScalar(pulse);
-  coreLight.intensity = 4 * pulse;
+  coreLight.intensity = 3.2 * pulse;
   orb.rotation.y += dt * 0.07 * k;
   controls.update();
   composer.render();
