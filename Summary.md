@@ -9,7 +9,7 @@
 - **The silk ring:** one ribbon of rose silk around the orb. The near half lies over the lapels and orb, and the far half tucks behind them.
 - **The states (Off, Idle, Working):** Idle and Working are each just a set of slider values, and switching glides every slider to the other set. Off dims everything.
 - **The Tune panel:** about 35 switches and sliders. Settings are saved in your browser and can be copied, and Rosie stays pinned on screen while you tune.
-- **For use in an app:** it can be controlled from code to set the state and audio level, and to pause, resume or remove it.
+- **For use in an app:** it can be controlled from code to set the state and intensity, and to pause, resume or remove it.
 
 ## How we got here
 

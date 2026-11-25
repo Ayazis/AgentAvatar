@@ -1,12 +1,27 @@
 /* Header, footer and the shared flex rows */
-header, footer, .section, .row, .setting { display: flex; align-items: center; justify-content: space-between; }
-header { padding: 0 0 21px; border-bottom: 1px solid #37303b; }
-.brand { font: italic 34px Georgia, serif; letter-spacing: -2px; }
+footer, .section, .row, .setting { display: flex; align-items: center; justify-content: space-between; }
 .row { gap: 6px; }
 .setting { gap: 16px; }
-footer { padding: 16px 2px; text-transform: none; letter-spacing: .04em; }
+footer { flex: none; padding: 8px 2px 0; text-transform: none; letter-spacing: .04em; }
 
 @media (max-width: 740px) {
   .setting { flex-wrap: wrap; }
-  footer { line-height: 1.6; }
+  footer { line-height: 1.4; font-size: 9px; }
+}
+
+/* Landscape on a short screen (phones): stage on the left, controls and Tune in a column on the right */
+@media (orientation: landscape) and (max-height: 520px) {
+  main { display: grid; grid-template-columns: minmax(0, 1fr) clamp(230px, 36%, 340px); grid-template-rows: auto minmax(0, 1fr); gap: 0 10px; }
+  .stage { grid-column: 1; grid-row: 1 / 3; border-radius: 8px; }
+  main .controls { grid-column: 2; grid-row: 1; align-self: start; flex-direction: column; align-items: stretch; justify-content: flex-start; gap: 8px; padding: 8px 10px; border: 1px solid #39303d; border-radius: 8px; }
+  .controls .setting { flex-wrap: nowrap; gap: 8px; }
+  main .controls .setting:first-child { flex-direction: column; align-items: stretch; justify-content: flex-start; gap: 6px; width: 100%; }
+  main .controls .setting { width: 100%; }
+  .tune summary .muted { display: none; }
+  .row { display: grid; grid-template-columns: 1fr 1fr; width: 100%; }
+  .row button span { display: none; }
+  .tune { grid-column: 2; grid-row: 2; align-self: start; margin-top: 8px; min-height: 0; max-height: calc(100% - 8px); }
+  .tune[open] { overflow-y: auto; }
+  .tune-grid { grid-template-columns: 1fr; }
+  footer { display: none; }
 }

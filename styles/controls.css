@@ -1,19 +1,21 @@
-/* State buttons and the audio level bar under the stage */
+/* State buttons and the intensity slider under the stage */
 .controls {
-  display: flex; align-items: center; justify-content: space-between; gap: 30px;
-  padding: 24px 28px; background: #17121a;
+  flex: none; display: flex; align-items: center; justify-content: space-between; gap: 20px;
+  padding: 8px 14px; background: #17121a;
   border: 1px solid #39303d; border-top: 0; border-radius: 0 0 8px 8px;
 }
 button {
-  cursor: pointer; padding: 10px 13px;
+  cursor: pointer; padding: 6px 10px;
   color: #c6bac6; background: #201a24; border: 1px solid #443947; border-radius: 5px;
-  text-transform: none; letter-spacing: .02em; font-size: 12px;
+  text-transform: none; letter-spacing: .02em; font-size: 11px;
 }
 button span { font: 10px monospace; opacity: .62; margin-left: 12px; }
 button[aria-pressed=true] { background: #422735; color: #ffcede; border-color: #96586d; }
 
 @media (max-width: 740px) {
-  .controls { flex-wrap: wrap; padding: 18px; gap: 17px; }
-  .row button { padding: 8px; }
+  .controls { flex-wrap: wrap; padding: 7px 10px; gap: 6px; }
+  .row { width: 100%; }
+  .row button { flex: 1; padding: 5px 2px; }
+  .row button span { display: none; }
   .controls .setting { justify-content: space-between; width: 100%; }
 }

@@ -4,7 +4,7 @@ import { GROUPS } from './groups.js';
 import { slider, groupSwitch } from './controls.js';
 import { save, restore, exportTune } from './storage.js';
 
-const LABEL = { off: 'Standby', idle: 'Idle', working: 'Working', knot: 'Knotted' };
+const LABEL = { off: 'Standby', idle: 'Idle', working: 'Working', knot: 'Knotted', scarf: 'Scarf', hoodie: 'Hoodie' };
 
 export class TunePanel {
   constructor(rosie, root = document) {
@@ -38,7 +38,7 @@ export class TunePanel {
         input.addEventListener('dblclick', () => { this.preset[key] = TUNE_DEFAULTS[this.name][key]; this.save(); });
         this.syncs.push(sync);
       }
-      if (title === 'Scene') this.syncs.push(slider(group, 'transition', 'Transition (s)', 0, 8, .1,
+      if (title === 'Scene') this.syncs.push(slider(group, 'transition', 'Transition (s)', 0, 20, .1,
         () => rosie.transition, v => { rosie.transition = v; }, this.save).sync);
       container.append(group);
     }

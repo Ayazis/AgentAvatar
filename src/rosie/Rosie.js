@@ -1,5 +1,5 @@
 // Rosie: the avatar. Owns the WebGL context, the clocks and the frame loop.
-// Public API: Rosie.create(canvas, options), setState('off'|'idle'|'working'|'knot'), setLevel(0…1), pause(), resume(), destroy().
+// Public API: Rosie.create(canvas, options), setState('off'|'idle'|'working'|'knot'|'scarf'|'hoodie'), setIntensity(0…1), pause(), resume(), destroy().
 import { loadAssets } from './assets.js';
 import { createTexture, UNITS } from './gl.js';
 import { LightBuffer } from './LightBuffer.js';
@@ -9,6 +9,8 @@ import { StateGlide } from './StateGlide.js';
 import { Breath } from './Breath.js';
 import { Input } from './Input.js';
 import { Knot } from './Knot.js';
+
+const isKnotState = s => s === 'knot' || s === 'scarf' || s === 'hoodie';
 
 export class Rosie {
   static async create(canvas, options = {}) {
@@ -27,7 +29,7 @@ export class Rosie {
     this.glide = new StateGlide();
     this.breath = new Breath();
     this.input = new Input(canvas);
-    this.state = 'idle'; this.wanted = 'idle'; this.alive = 1; this.level = 0; this.audio = 0;
+    this.state = 'idle'; this.wanted = 'idle'; this.alive = 1; this.intensityTarget = 0; this.intensity = 0;
     this.t = 0; this.travel = 0; this.silkT = 0; this.jacketT = 0;
     this.last = -1; this.id = 0; this.paused = false; this.dead = false;
 
@@ -37,9 +39,16 @@ export class Rosie {
       createTexture(g, UNITS.atlas, assets.atlas),
       createTexture(g, UNITS.depthA, assets.depth),
       createTexture(g, UNITS.bounds, { data: assets.bounds, width: 640, height: 6 }),
-      createTexture(g, UNITS.knotArt, assets.knot.art),
-      createTexture(g, UNITS.knotDep, assets.knot.depth),
+      createTexture(g, UNITS.knotArt, assets.knot.variants.knot.art),
+      createTexture(g, UNITS.knotDep, assets.knot.variants.knot.depth),
     ];
+    // the scarf's textures wait unbound; showVariant() puts the right pair on the knot units
+    this.variantTex = { knot: this.textures.slice(3, 5) };
+    for (const [k, v] of Object.entries(assets.knot.variants)) if (k !== 'knot') {
+      this.variantTex[k] = [createTexture(g, UNITS.knotArt, v.art), createTexture(g, UNITS.knotDep, v.depth)];
+      this.textures.push(...this.variantTex[k]);
+    }
+    this.showVariant('knot');
     this.light = new LightBuffer(g, UNITS.light);
     this.back = new ScenePass(g, assets.spans, false, detail);
     this.particles = new ParticleLayer(g, assets.spans);
@@ -59,13 +68,22 @@ export class Rosie {
   get gliding() { return this.glide.gliding; }
   get pose() { return this.glide.pose; }
 
+  showVariant(v) {
+    const g = this.gl, [art, dep] = this.variantTex[v];
+    g.activeTexture(g.TEXTURE0 + UNITS.knotArt); g.bindTexture(g.TEXTURE_2D, art);
+    g.activeTexture(g.TEXTURE0 + UNITS.knotDep); g.bindTexture(g.TEXTURE_2D, dep);
+  }
+
+  // 'knot' and 'scarf' glide to the idle pose, then turn into the knotted look; leaving (or switching look) turns back first
   // 'knot' glides to the idle pose, then turns into the knotted jacket; leaving it turns back first
   setState(s) {
     this.wanted = s;
-    if (s === 'knot') this.state = 'knot';
+    if (isKnotState(s)) this.state = s;
     else this.knot.knotted = false;
   }
-  setLevel(v) { this.level = Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0; }
+  // how intense Rosie is (0 calm … 1 most lively): she speeds up, swells and brightens; the value is eased in
+  setIntensity(v) { this.intensityTarget = Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0; }
+  setLevel(v) { this.setIntensity(v); }   // the old name, kept for host apps that still call it
   pause() { this.paused = true; this.schedule(); }
   resume() { this.paused = false; this.schedule(); }
 
@@ -92,16 +110,19 @@ export class Rosie {
   // advance every clock by dt seconds
   step(dt, now) {
     this.alive += ((this.state === 'off' ? 0 : 1) - this.alive)*(1 - Math.exp(-3*dt));
-    if (this.wanted === 'knot' && !this.knot.knotted && Math.abs(this.pose - 1) < .02) this.knot.knotted = true;
-    if (this.wanted !== 'knot' && !this.knot.active) this.state = this.wanted;
+    const k = this.knot, want = this.wanted;
+    if (isKnotState(want) && k.variant !== want && k.knotted) k.knotted = false;      // other look: turn back first
+    if (isKnotState(want) && k.variant !== want && k.setVariant(want)) this.showVariant(want);
+    if (isKnotState(want) && k.variant === want && !k.knotted && Math.abs(this.pose - 1) < .02) k.knotted = true;
+    if (!isKnotState(want) && !k.active) this.state = want;
     this.knot.update(dt, this.tune.knotSpeed);
     this.glide.update(dt, this.state);
     const T = this.tune, pace = dt*(.04 + .96*this.alive);
-    this.audio += (this.level - this.audio)*(1 - Math.exp(-12*dt));
+    this.intensity += (this.intensityTarget - this.intensity)*(1 - Math.exp(-12*dt));
     this.input.update(dt, now, { amount: T.tilt, ease: 1 - Math.exp(-6*dt) });
     this.t += pace;
     this.breath.update(dt, this.alive, T.breathRate);
-    this.travel += dt*(1.3*T.sparkSpeed + 1.6*this.audio)*this.alive;
+    this.travel += dt*(1.3*T.sparkSpeed + 1.6*this.intensity)*this.alive;
     this.jacketT += pace*T.jacketSpeed;
     this.silkT += pace*T.silkSpeed;   // the silk never hurries
   }
@@ -109,21 +130,25 @@ export class Rosie {
   render(dt) {
     const c = this.canvas, inp = this.input, aspect = c.width/c.height;
     const scale = Math.min(.95, aspect*1.42)*(.9 + .1*this.alive)*(1 + .006*this.breath.value*this.alive);
+    const T = this.tune, a = this.alive, live = this.intensity*a, breath = this.breath.value;
     const f = {
-      T: this.tune, t: this.t, alive: this.alive, audio: this.audio, breath: this.breath.value, pulse: inp.pulse,
-      aspect, width: c.width, height: c.height, x: inp.x, y: inp.y, age: inp.age, tapX: inp.tapX, tapY: inp.tapY,
-      travel: this.travel, silkT: this.silkT, jacketT: this.jacketT, pose: this.pose, tilt: [inp.x, -inp.y],
-      dpr: this.dpr()*(c.height/(740*this.dpr()))**.5, knot: this.knot.uniforms(this.tune.knotBlur),
+      T, t: this.t, alive: a, intensity: this.intensity, breath, pulse: inp.pulse,
+      aspect, scale, width: c.width, height: c.height, x: inp.x, y: inp.y, age: inp.age, tapX: inp.tapX, tapY: inp.tapY,
+      travel: this.travel, silkT: this.silkT, pose: this.pose, tilt: [inp.x, -inp.y],
+      // the jacket's cloth motion, shared by every pass that draws or masks with it (clothed() in jacket.glsl.js)
+      cloth: [this.jacketT, a*(1 + .6*live)*T.jacketMotion, breath, live],
+      clothB: [inp.x, -inp.y, this.t, a*T.jacketMotion],
+      dpr: this.dpr()*(c.height/(740*this.dpr()))**.5, knot: this.knot.uniforms(T.knotBlur),
     };
     this.particles.update(dt, f);
-    if (f.T.denimLight > .001) {                     // the particles' light first, so the jacket can be lit by it
+    if (T.denimLight > .001) {                       // the particles' light first, so the jacket can be lit by it
       this.light.begin();
-      this.particles.draw(f, scale, [1, 10*f.T.lightSpread/this.light.div]);
+      this.particles.draw(f, [1, 10*T.lightSpread/this.light.div]);
       this.light.end(c.width, c.height);
     } else this.light.clear(c.width, c.height);
     this.back.draw(f, this.quad);
-    this.particles.draw(f, scale);
-    if (f.T.silkOn > .001) {
+    this.particles.draw(f);
+    if (T.silkOn > .001) {
       const g = this.gl;
       g.enable(g.BLEND); g.blendFunc(g.ONE, g.ONE_MINUS_SRC_ALPHA);
       this.front.draw(f, this.quad);
