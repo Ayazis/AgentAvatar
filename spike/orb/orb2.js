@@ -6,7 +6,7 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { createDenimBand } from './cloth.js?v=7';
+import { createDenimBand } from './cloth.js?v=6';
 
 const $ = (id) => document.getElementById(id);
 const ORANGE = new THREE.Color('#ff8a1f');
@@ -103,47 +103,6 @@ bladeSteel.onBeforeCompile = (sh) => {
        float rimF = pow(1.0 - abs(dot(normalize(normal), normalize(vViewPosition))), 5.0);
        totalEmissiveRadiance += rimColor * rimF;`);
 };
-
-// Semi-solid material: noise erodes the surface (more toward the tips / around the ring),
-// leaving a glowing orange seam where it breaks up, like metal turning to particles.
-const semiTime = { value: 0 };
-function semiSolid(mat, thrExpr, seed = 0) {
-  const m = mat.clone();
-  m.side = THREE.DoubleSide;
-  const prev = mat.onBeforeCompile;
-  m.onBeforeCompile = (sh, r) => {
-    if (prev) prev(sh, r);
-    sh.uniforms.uSemiT = semiTime;
-    sh.uniforms.uSeed = { value: seed };
-    sh.uniforms.uGlow = { value: ORANGE.clone().multiplyScalar(1.7) };
-    sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', '#include <common>\nvarying vec3 vObj; varying vec2 vUvS;')
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvObj = position; vUvS = uv;');
-    sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', `#include <common>
-        uniform float uSemiT; uniform float uSeed; uniform vec3 uGlow;
-        varying vec3 vObj; varying vec2 vUvS;
-        float h3(vec3 p){ p = fract(p*0.3183099+0.1); p *= 17.0; return fract(p.x*p.y*p.z*(p.x+p.y+p.z)); }
-        float vn(vec3 x){ vec3 i=floor(x), f=fract(x); f=f*f*(3.0-2.0*f);
-          return mix(mix(mix(h3(i),h3(i+vec3(1,0,0)),f.x),mix(h3(i+vec3(0,1,0)),h3(i+vec3(1,1,0)),f.x),f.y),
-                     mix(mix(h3(i+vec3(0,0,1)),h3(i+vec3(1,0,1)),f.x),mix(h3(i+vec3(0,1,1)),h3(i+vec3(1,1,1)),f.x),f.y),f.z); }
-        float semiEdge;`)
-      .replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>
-        {
-          float n = vn(vObj * 12.0 + uSeed) * 0.6 + vn(vObj * 34.0 + uSeed * 2.0) * 0.4;
-          float thr = (${thrExpr}) + 0.06 * sin(uSemiT * 0.6 + uSeed * 3.0);
-          float d = n - thr;
-          if (d < 0.0) discard;
-          semiEdge = 1.0 - smoothstep(0.0, 0.05, d);
-        }`)
-      .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
-        totalEmissiveRadiance += uGlow * semiEdge;`);
-  };
-  return m;
-}
-const RING_THR = '0.3 + 0.17 * sin(atan(vObj.y, vObj.x) * 2.0 + uSeed * 5.0)';
-const BLADE_THR = '0.05 + 0.5 * pow(abs(vUvS.y - 0.5) * 2.0, 2.0) + 0.3 * pow(clamp(vUvS.x / 2.2, 0.0, 1.0), 1.5)';
-const bladeSemi = semiSolid(bladeSteel, BLADE_THR, 9);
 
 // ---------- geometry helpers ----------
 const TAU = Math.PI * 2;
@@ -271,13 +230,23 @@ function ring({ rIn, rOut, depth, tilt, speed, holes = 0, domes = 0, axis = [0, 
   spin(rotor, axis, speed);
 }
 
-// Five thinner perforated bands; each one dissolves along part of its length.
-const ringSemi = (i) => semiSolid(steel, RING_THR, i * 1.7);
-ring({ rIn: 1.08, rOut: 1.2, depth: 0.035, tilt: [1.25, 0.2, 0.3], speed: 0.22, holes: 40, domes: 4, mat: ringSemi(1) });
-ring({ rIn: 0.9, rOut: 1.0, depth: 0.035, tilt: [0.2, 1.1, 0.5], speed: -0.3, holes: 34, domes: 4, mat: ringSemi(2) });
-ring({ rIn: 1.3, rOut: 1.42, depth: 0.03, tilt: [0.5, 0.3, 1.5], speed: 0.15, holes: 46, domes: 4, mat: ringSemi(3) });
-ring({ rIn: 0.7, rOut: 0.8, depth: 0.03, tilt: [1.7, 0.9, 0.1], speed: -0.42, holes: 26, domes: 4, mat: ringSemi(4) });
-ring({ rIn: 1.12, rOut: 1.26, depth: 0.03, tilt: [0.9, -0.8, 1.1], speed: 0.18, holes: 42, domes: 4, mat: ringSemi(5) });
+// Seven perforated bands layered tightly, plus thin wire hoops, like the dense cage in the reference.
+ring({ rIn: 1.02, rOut: 1.22, depth: 0.05, tilt: [1.25, 0.2, 0.3], speed: 0.22, holes: 40, domes: 8 });
+ring({ rIn: 0.86, rOut: 1.02, depth: 0.05, tilt: [0.2, 1.1, 0.5], speed: -0.3, holes: 34, domes: 6 });
+ring({ rIn: 1.28, rOut: 1.48, depth: 0.045, tilt: [0.5, 0.3, 1.5], speed: 0.15, holes: 46, domes: 8 });
+ring({ rIn: 0.66, rOut: 0.82, depth: 0.045, tilt: [1.7, 0.9, 0.1], speed: -0.42, holes: 26, domes: 6 });
+ring({ rIn: 1.1, rOut: 1.28, depth: 0.045, tilt: [0.9, -0.8, 1.1], speed: 0.18, holes: 42, domes: 8 });
+ring({ rIn: 0.74, rOut: 0.9, depth: 0.04, tilt: [-0.4, 0.6, 2.0], speed: -0.25, holes: 30, domes: 6 });
+ring({ rIn: 1.32, rOut: 1.5, depth: 0.04, tilt: [1.9, -0.3, 0.7], speed: -0.12, holes: 50, domes: 8 });
+for (const [r, tilt, sp] of [[0.95, [0.3, 0.2, 0.9], 0.3], [1.15, [1.4, 1.2, 0.2], -0.22], [1.38, [0.1, 1.5, 1.0], 0.16],
+  [0.78, [1.0, 0.4, 1.6], -0.35], [1.22, [2.2, 0.7, 0.4], 0.12]]) {
+  const holder = new THREE.Group();
+  holder.rotation.set(...tilt);
+  const hoop = new THREE.Mesh(new THREE.TorusGeometry(r, 0.014, 6, 64), bronze);
+  holder.add(hoop);
+  orb.add(holder);
+  spin(hoop, [0, 0, 1], sp);
+}
 
 // ----- pods and axle fittings (all built along +Y, pointing outward) -----
 function podLens(cyan = false) {
@@ -379,6 +348,8 @@ const axles = [
   axle([1, -0.12, 0.25], 2.6, () => podLens(false), () => podLens(true)),
   axle([0.15, 0.2, 1], 2.45, () => podLens(false), podLantern),
   axle([-0.8, 0.55, 0.45], 2.3, () => podLens(false), podDish),
+  axle([0.7, 0.3, -0.8], 2.2, podLantern, () => podLens(true)),
+  axle([-0.3, -0.9, 0.5], 2.0, () => podLens(false), podDish),
 ];
 axles.forEach((a, i) => spin(a, [0.2, 1, 0.1], 0.07 * (i % 2 ? -1 : 1)));
 
@@ -399,11 +370,11 @@ for (const rot of [[0, 0, 0], [Math.PI / 2, 0, 0], [0, Math.PI / 2, 0]]) {
 // three stacks of gears, one per axis, so the core reads as a dense drum
 const drumRot = [[0, 0, 0], [Math.PI / 2, 0, 0], [0, Math.PI / 2, 0]];
 drumRot.forEach((rot, a) => {
-  [[0.5, 20], [0.4, 16]].forEach(([r, teeth], i) => {
+  [[0.5, 20], [0.42, 17], [0.35, 14], [0.58, 22]].forEach(([r, teeth], i) => {
     const holder = new THREE.Group();
     holder.rotation.set(...rot);
     const m = new THREE.Mesh(spokedGear(r * (1 - a * 0.06), teeth, 0.034), i % 2 ? steel : bronze);
-    m.position.z = (i - 0.5) * 0.08;
+    m.position.z = (i - 1.5) * 0.065;
     holder.add(m);
     core.add(holder);
     spin(m, [0, 0, 1], (0.45 + i * 0.12) * (i % 2 ? -1 : 1) * (a % 2 ? -1 : 1));
@@ -423,19 +394,19 @@ function blade(R, len, width, thick, notches, tilt, speed, axis) {
   const g = bladeGeo(R, len, width, thick, notches);
   const holder = new THREE.Group();
   holder.rotation.set(...tilt);
-  holder.add(new THREE.Mesh(g, bladeSemi));
+  holder.add(new THREE.Mesh(g, bladeSteel));
   const { point } = g.userData;
   const pts = [];
   for (let i = 3; i <= 106; i++) pts.push(new THREE.Vector3(...point(i / 110, 1, 1)).multiplyScalar(1.003));
-  holder.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 220, 0.0032, 4), edgeGlow));
+  holder.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 220, 0.0042, 4), edgeGlow));
   orb.add(holder);
   spin(holder, axis, speed);
 }
-blade(1.74, 1.4, 0.3, 0.024, [[0.4, 0.5, 0.8], [0.66, 0.74, 0.86]], [0.4, 0.2, 2.4], 0.14, [0.3, 1, 0.2]);
-blade(1.8, 1.25, 0.28, 0.024, [[0.34, 0.44, 0.82], [0.6, 0.68, 0.88]], [2.6, 0.5, 0.2], -0.11, [1, 0.2, 0.3]);
-blade(1.72, 1.5, 0.26, 0.024, [[0.46, 0.56, 0.8]], [1.2, 2.4, 1.0], 0.09, [0.2, 0.4, 1]);
-blade(1.84, 1.15, 0.32, 0.026, [[0.32, 0.42, 0.82], [0.62, 0.7, 0.88]], [3.4, 1.0, 1.9], -0.13, [0.5, 1, 0.5]);
-blade(1.77, 1.35, 0.27, 0.024, [[0.4, 0.5, 0.8]], [0.8, 4.0, 0.5], 0.11, [1, 0.5, 0.1]);
+blade(1.74, 1.3, 0.42, 0.04, [[0.4, 0.5, 0.8], [0.66, 0.74, 0.86]], [0.4, 0.2, 2.4], 0.14, [0.3, 1, 0.2]);
+blade(1.8, 1.15, 0.4, 0.04, [[0.34, 0.44, 0.82], [0.6, 0.68, 0.88]], [2.6, 0.5, 0.2], -0.11, [1, 0.2, 0.3]);
+blade(1.72, 1.4, 0.36, 0.04, [[0.46, 0.56, 0.8]], [1.2, 2.4, 1.0], 0.09, [0.2, 0.4, 1]);
+blade(1.84, 1.05, 0.44, 0.045, [[0.32, 0.42, 0.82], [0.62, 0.7, 0.88]], [3.4, 1.0, 1.9], -0.13, [0.5, 1, 0.5]);
+blade(1.77, 1.25, 0.38, 0.04, [[0.4, 0.5, 0.8]], [0.8, 4.0, 0.5], 0.11, [1, 0.5, 0.1]);
 
 // ---------- cyan filaments: thin beaded arcs ----------
 const sparkUniforms = { uTime: { value: 0 }, uPx: { value: 1 } };
@@ -506,27 +477,6 @@ filament({ radius: 0.9, arc: 2.6, color: CYAN, tilt: [0.7, 2.1, 0.2], speed: -1.
 filament({ radius: 1.35, arc: 2.2, color: CYAN, tilt: [2.4, 0.2, 1.4], speed: 0.9 });
 filament({ radius: 1.05, arc: 1.8, color: ORANGE, tilt: [1.1, 1.6, 0.6], speed: 1.0, beads: 60 });
 
-// Embers: warm motes concentrated around the blades, as if the dissolving metal were shedding them.
-{
-  const n = 260, pos = new Float32Array(n * 3), col = new Float32Array(n * 3), sz = new Float32Array(n), ph = new Float32Array(n);
-  for (let i = 0; i < n; i++) {
-    const r = 1.5 + Math.random() * 0.6, th = Math.random() * TAU, z = Math.random() * 2 - 1, k = Math.sqrt(1 - z * z);
-    pos.set([Math.cos(th) * k * r, z * r, Math.sin(th) * k * r], i * 3);
-    const c = Math.random() < 0.2 ? CYAN : ORANGE;
-    col.set([c.r * 0.7, c.g * 0.7, c.b * 0.7], i * 3);
-    sz[i] = 0.35 + Math.random() * 0.9;
-    ph[i] = Math.random();
-  }
-  const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-  g.setAttribute('aColor', new THREE.BufferAttribute(col, 3));
-  g.setAttribute('aSize', new THREE.BufferAttribute(sz, 1));
-  g.setAttribute('aPhase', new THREE.BufferAttribute(ph, 1));
-  const embers = new THREE.Points(g, sparkMat);
-  orb.add(embers);
-  spin(embers, [0.1, 1, 0.05], 0.06);
-}
-
 // ---------- denim band ----------
 const band = createDenimBand();
 orb.add(band.group);
@@ -576,7 +526,6 @@ renderer.setAnimationLoop(() => {
   for (const s of spinners) { q.setFromAxisAngle(s.axis, s.speed * dt * k); s.obj.quaternion.multiply(q); }
   const t = clock.elapsedTime;
   sparkUniforms.uTime.value = t;
-  semiTime.value = t;
   const pulse = 1 + Math.sin(t * 2.1) * 0.06 + Math.sin(t * 5.3) * 0.025;
   lensGlass.scale.setScalar(pulse);
   coreLight.intensity = 3.2 * pulse;
