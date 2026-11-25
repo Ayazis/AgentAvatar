@@ -4,7 +4,7 @@ import * as THREE from 'three';
 
 const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 
-export function createDenimBand({ texPath = './tex/', radius = 1.6, halfWidth = 0.2, arc = 5.1, start = 0.4 } = {}) {
+export function createDenimBand({ texPath = './tex/', radius = 1.6, halfWidth = 0.16, arc = 5.1, start = 0.4 } = {}) {
   const loader = new THREE.TextureLoader();
   const load = (name, srgb = false) => {
     const t = loader.load(texPath + name + '.webp');
@@ -95,7 +95,7 @@ export function createDenimBand({ texPath = './tex/', radius = 1.6, halfWidth = 
 
   // Rolled hem: a thin tube running along each edge gives the band its thick, folded-over edge.
   function makeHem(sign) {
-    const NA = 6, r = 0.017, count = (NS + 1) * (NA + 1);
+    const NA = 6, r = 0.012, count = (NS + 1) * (NA + 1);
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(count * 3), 3));
     const uv = new Float32Array(count * 2), idx = [];
