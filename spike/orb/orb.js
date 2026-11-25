@@ -1,7 +1,6 @@
 // Armillary orb spike: procedural geometry + emissive materials + bloom.
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
@@ -15,9 +14,72 @@ const CYAN = new THREE.Color('#38c8ff');
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
 document.body.prepend(renderer.domElement);
 const scene = new THREE.Scene();
-scene.background = new THREE.Color('#0a0610');
+// Purple-tinted backdrop: radial gradient, drawn behind everything.
+{
+  const c = document.createElement('canvas');
+  c.width = c.height = 512;
+  const x = c.getContext('2d');
+  const g = x.createRadialGradient(256, 256, 20, 256, 256, 360);
+  g.addColorStop(0, '#22102a'); g.addColorStop(0.55, '#120818'); g.addColorStop(1, '#040208');
+  x.fillStyle = g; x.fillRect(0, 0, 512, 512);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  scene.background = t;
+}
+
+// Studio environment: a dark room with a few bright coloured light cards.
+// These are what show up as long highlight streaks on the metal.
 const pmrem = new THREE.PMREMGenerator(renderer);
-scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+{
+  const env = new THREE.Scene();
+  env.add(new THREE.Mesh(new THREE.BoxGeometry(20, 20, 20),
+    new THREE.MeshBasicMaterial({ color: '#07040a', side: THREE.BackSide })));
+  const card = (color, w, h, pos, intensity) => {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h),
+      new THREE.MeshBasicMaterial({ color: new THREE.Color(color).multiplyScalar(intensity), side: THREE.DoubleSide }));
+    m.position.set(...pos);
+    m.lookAt(0, 0, 0);
+    env.add(m);
+  };
+  card('#ff8a30', 4, 10, [-8, 1, 3], 11);   // warm strip, left
+  card('#ffb060', 8, 1.2, [0, 9, 2], 7);  // warm top bar
+  card('#38c8ff', 1.5, 7, [8, 0, -4], 2.2); // cyan strip, back right
+  card('#38c8ff', 6, 1, [-2, -8, -3], 1); // faint cyan floor bounce
+  card('#ffd8a0', 5, 5, [3, 2, 9], 3.5);  // soft fill behind the camera
+  scene.environment = pmrem.fromScene(env, 0.02).texture;
+}
+
+// Procedural wear: tarnish blotches + fine scratches, used as colour, roughness and bump.
+function wearTexture(seed) {
+  const S = 512, c = document.createElement('canvas');
+  c.width = c.height = S;
+  const x = c.getContext('2d');
+  let s = seed;
+  const r = () => ((s = (s * 16807) % 2147483647) / 2147483647);
+  x.fillStyle = '#b0b0b0'; x.fillRect(0, 0, S, S);
+  for (let i = 0; i < 160; i++) { // soft dark tarnish patches
+    const px = r() * S, py = r() * S, rad = 20 + r() * 80;
+    const g = x.createRadialGradient(px, py, 0, px, py, rad);
+    g.addColorStop(0, `rgba(40,30,25,${0.12 + r() * 0.25})`); g.addColorStop(1, 'rgba(40,30,25,0)');
+    x.fillStyle = g; x.fillRect(px - rad, py - rad, rad * 2, rad * 2);
+  }
+  for (let i = 0; i < 420; i++) { // thin bright scratches
+    x.strokeStyle = `rgba(255,255,255,${0.1 + r() * 0.35})`;
+    x.lineWidth = 0.4 + r() * 0.9;
+    const px = r() * S, py = r() * S, a = r() * Math.PI, len = 8 + r() * 70;
+    x.beginPath(); x.moveTo(px, py); x.lineTo(px + Math.cos(a) * len, py + Math.sin(a) * len); x.stroke();
+  }
+  for (let i = 0; i < 5000; i++) { // grain
+    x.fillStyle = `rgba(0,0,0,${r() * 0.12})`;
+    x.fillRect(r() * S, r() * S, 1.5, 1.5);
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.repeat.set(2, 2);
+  t.anisotropy = 4;
+  return t;
+}
+const wearA = wearTexture(11), wearB = wearTexture(97);
 
 const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 50);
 camera.position.set(0.2, 0.35, 5.2);
@@ -38,10 +100,12 @@ scene.add(rimCyan, rimWarm);
 
 // ---------- materials ----------
 const brass = new THREE.MeshStandardMaterial({
-  color: '#8a6a48', metalness: 1, roughness: 0.34, envMapIntensity: 0.55,
+  color: '#c8a070', metalness: 1, roughness: 0.62, envMapIntensity: 1.0,
+  map: wearA, roughnessMap: wearA, bumpMap: wearA, bumpScale: 1.2,
 });
 const darkBronze = new THREE.MeshStandardMaterial({
-  color: '#4a3a30', metalness: 1, roughness: 0.42, envMapIntensity: 0.5, side: THREE.DoubleSide,
+  color: '#8a6a58', metalness: 1, roughness: 0.7, envMapIntensity: 0.9, side: THREE.DoubleSide,
+  map: wearB, roughnessMap: wearB, bumpMap: wearB, bumpScale: 1.5,
 });
 const glow = new THREE.MeshBasicMaterial({ color: ORANGE.clone().multiplyScalar(2.0), toneMapped: false });
 
@@ -185,47 +249,105 @@ blade(1.3, 1.5, 0.9, [1.2, 2.4, 1.0], 0.1, [0.2, 0.4, 1]);
 blade(1.46, 1.0, 1.2, [3.4, 1.0, 1.9], -0.14, [0.5, 1, 0.5]);
 blade(1.38, 1.2, 0.95, [0.8, 4.0, 0.5], 0.12, [1, 0.5, 0.1]);
 
-// ---------- sparks: glowing particles streaming on tilted orbits ----------
-function spriteTex() {
-  const c = document.createElement('canvas');
-  c.width = c.height = 64;
-  const x = c.getContext('2d');
-  const g = x.createRadialGradient(32, 32, 0, 32, 32, 32);
-  g.addColorStop(0, '#fff'); g.addColorStop(0.25, '#fff8'); g.addColorStop(1, '#0000');
-  x.fillStyle = g; x.fillRect(0, 0, 64, 64);
-  return new THREE.CanvasTexture(c);
-}
-const sprite = spriteTex();
+// ---------- sparks: shader particles with per-point size, twinkle and motion tails ----------
+const sparkUniforms = { uTime: { value: 0 }, uPx: { value: 1 } };
+const sparkMat = new THREE.ShaderMaterial({
+  uniforms: sparkUniforms,
+  transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+  vertexShader: `
+    attribute float aSize; attribute float aPhase; attribute vec3 aColor;
+    uniform float uTime; uniform float uPx;
+    varying vec3 vColor; varying float vTw;
+    void main(){
+      vec4 mv = modelViewMatrix * vec4(position,1.0);
+      float tw = 0.55 + 0.45 * sin(uTime * (2.0 + aPhase * 5.0) + aPhase * 40.0);
+      vTw = tw; vColor = aColor;
+      gl_PointSize = aSize * uPx * (0.6 + 0.6 * tw) * (31.0 / -mv.z);
+      gl_Position = projectionMatrix * mv;
+    }`,
+  fragmentShader: `
+    varying vec3 vColor; varying float vTw;
+    void main(){
+      vec2 p = gl_PointCoord - 0.5; float d = length(p) * 2.0;
+      float core = smoothstep(1.0, 0.0, d);
+      float a = core * core * (0.5 + 0.9 * pow(core, 4.0));
+      gl_FragColor = vec4(vColor * (0.6 + 1.6 * vTw) * a, a);
+    }`,
+});
 
 function stream({ radius, count, arc, color, tilt, speed, size }) {
-  const pos = new Float32Array(count * 3);
-  const col = new Float32Array(count * 3);
+  const pos = new Float32Array(count * 3), col = new Float32Array(count * 3);
+  const sz = new Float32Array(count), ph = new Float32Array(count);
   for (let i = 0; i < count; i++) {
-    const u = Math.pow(Math.random(), 1.6);               // density piles up at the head
+    const u = Math.pow(Math.random(), 1.5);                  // density piles up at the head
     const a = u * arc;
-    const j = (Math.random() - 0.5) * 0.06 * (1 + u * 2); // tail spreads out
-    const r = radius + j;
-    pos.set([Math.cos(a) * r, Math.sin(a) * r, (Math.random() - 0.5) * 0.05], i * 3);
-    const fade = 1 - u * 0.85;
-    col.set([color.r * fade, color.g * fade, color.b * fade], i * 3);
+    const spread = 0.015 + u * 0.09;                          // tail fans out
+    const r = radius + (Math.random() - 0.5) * spread * 2;
+    pos.set([Math.cos(a) * r, Math.sin(a) * r, (Math.random() - 0.5) * spread * 1.5], i * 3);
+    const fade = Math.pow(1 - u, 1.3);
+    const hot = Math.random() < 0.08;                          // a few bright white-hot sparks
+    const c = hot ? new THREE.Color('#ffffff') : color;
+    col.set([c.r * (0.25 + fade), c.g * (0.25 + fade), c.b * (0.25 + fade)], i * 3);
+    sz[i] = (hot ? 2.2 : 0.5 + Math.random() * 1.1) * size * (0.5 + fade * 0.8);
+    ph[i] = Math.random();
   }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-  g.setAttribute('color', new THREE.BufferAttribute(col, 3));
-  const pts = new THREE.Points(g, new THREE.PointsMaterial({
-    size, map: sprite, vertexColors: true, transparent: true, depthWrite: false,
-    blending: THREE.AdditiveBlending, sizeAttenuation: true,
+  g.setAttribute('aColor', new THREE.BufferAttribute(col, 3));
+  g.setAttribute('aSize', new THREE.BufferAttribute(sz, 1));
+  g.setAttribute('aPhase', new THREE.BufferAttribute(ph, 1));
+  const pts = new THREE.Points(g, sparkMat);
+
+  // faint filament the sparks ride on: thin arc with a fading tail
+  const N = 96, lp = new Float32Array(N * 3), lc = new Float32Array(N * 3);
+  for (let i = 0; i < N; i++) {
+    const u = i / (N - 1), a = u * arc, f = Math.pow(1 - u, 1.6) * 0.55;
+    lp.set([Math.cos(a) * radius, Math.sin(a) * radius, 0], i * 3);
+    lc.set([color.r * f, color.g * f, color.b * f], i * 3);
+  }
+  const lg = new THREE.BufferGeometry();
+  lg.setAttribute('position', new THREE.BufferAttribute(lp, 3));
+  lg.setAttribute('color', new THREE.BufferAttribute(lc, 3));
+  const line = new THREE.Line(lg, new THREE.LineBasicMaterial({
+    vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
   }));
+
+  const rotor = new THREE.Group();
+  rotor.add(pts, line);
   const holder = new THREE.Group();
   holder.rotation.set(...tilt);
-  holder.add(pts);
+  holder.add(rotor);
   orb.add(holder);
-  spin(pts, [0, 0, 1], speed);
+  spin(rotor, [0, 0, 1], speed);
 }
-stream({ radius: 0.95, count: 420, arc: 3.4, color: CYAN, tilt: [1.0, 0.3, 0.4], speed: 1.1, size: 0.05 });
-stream({ radius: 1.15, count: 380, arc: 3.0, color: CYAN, tilt: [0.4, 1.2, 1.9], speed: -0.8, size: 0.045 });
-stream({ radius: 0.7, count: 300, arc: 2.8, color: CYAN, tilt: [2.0, 0.2, 0.9], speed: 1.5, size: 0.04 });
-stream({ radius: 1.05, count: 260, arc: 2.2, color: ORANGE, tilt: [0.2, 0.8, 1.2], speed: -1.2, size: 0.05 });
+stream({ radius: 0.95, count: 520, arc: 3.6, color: CYAN, tilt: [1.0, 0.3, 0.4], speed: 1.1, size: 1 });
+stream({ radius: 1.15, count: 460, arc: 3.2, color: CYAN, tilt: [0.4, 1.2, 1.9], speed: -0.8, size: 1 });
+stream({ radius: 0.7, count: 360, arc: 3.0, color: CYAN, tilt: [2.0, 0.2, 0.9], speed: 1.5, size: 0.9 });
+stream({ radius: 1.05, count: 320, arc: 2.4, color: ORANGE, tilt: [0.2, 0.8, 1.2], speed: -1.2, size: 1 });
+stream({ radius: 1.3, count: 240, arc: 2.0, color: ORANGE, tilt: [1.6, 0.9, 0.3], speed: 0.9, size: 0.9 });
+
+// Embers: sparse warm motes drifting in a shell around the orb (outside the orb group, so they stay put)
+{
+  const n = 160, pos = new Float32Array(n * 3), col = new Float32Array(n * 3);
+  const sz = new Float32Array(n), ph = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const r = 1.0 + Math.random() * 1.6, th = Math.random() * Math.PI * 2, z = Math.random() * 2 - 1;
+    const s = Math.sqrt(1 - z * z);
+    pos.set([Math.cos(th) * s * r, z * r, Math.sin(th) * s * r], i * 3);
+    const c = Math.random() < 0.25 ? CYAN : ORANGE;
+    col.set([c.r * 0.5, c.g * 0.5, c.b * 0.5], i * 3);
+    sz[i] = 0.3 + Math.random() * 0.7;
+    ph[i] = Math.random();
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  g.setAttribute('aColor', new THREE.BufferAttribute(col, 3));
+  g.setAttribute('aSize', new THREE.BufferAttribute(sz, 1));
+  g.setAttribute('aPhase', new THREE.BufferAttribute(ph, 1));
+  const embers = new THREE.Points(g, sparkMat);
+  scene.add(embers);
+  spin(embers, [0.1, 1, 0.05], 0.05);
+}
 
 // ---------- postprocessing ----------
 const composer = new EffectComposer(renderer);
@@ -239,6 +361,7 @@ renderer.toneMappingExposure = 1.0;
 function resize() {
   const w = innerWidth, h = innerHeight;
   renderer.setPixelRatio(Math.min(devicePixelRatio, +$('pr').value));
+  sparkUniforms.uPx.value = renderer.getPixelRatio();
   renderer.setSize(w, h);
   composer.setPixelRatio(renderer.getPixelRatio());
   composer.setSize(w, h);
@@ -275,6 +398,7 @@ renderer.setAnimationLoop(() => {
     s.obj.quaternion.multiply(q);
   }
   const t = clock.elapsedTime;
+  sparkUniforms.uTime.value = t;
   const pulse = 1 + Math.sin(t * 2.1) * 0.08 + Math.sin(t * 5.3) * 0.03;
   core.scale.setScalar(pulse);
   coreLight.intensity = 4 * pulse;
