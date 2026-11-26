@@ -120,11 +120,13 @@ def denim():
     nt.links.new(b.outputs[0], out.inputs[0])
     return m
 
-M_STEEL = metal('Steel', (0.62, 0.6, 0.58), 0.28, rim_k=6.0)
+M_STEEL = metal('Steel', (0.58, 0.55, 0.52), 0.3, rim_k=2.5)
 M_RING = metal('RingSteel', (0.55, 0.53, 0.52), 0.32, rim_k=0.6)
 M_COPPER = metal('Copper', (0.85, 0.42, 0.2), 0.3, brushed=False, rim_k=1.5)
 M_DARK = metal('DarkIron', (0.18, 0.16, 0.15), 0.4, brushed=False)
 M_HOT, E_HOT = emissive('Hot', (1.0, 0.42, 0.06), 40)
+M_EDGE, _ = emissive('Edge', (1.0, 0.38, 0.06), 12)
+M_EDGE2, _ = emissive('Edge2', (1.0, 0.4, 0.1), 3)
 M_CYAN, E_CYAN = emissive('Cyan', (0.1, 0.75, 1.0), 14)
 M_CYANLINE, _ = emissive('CyanLine', (0.05, 0.5, 0.9), 1.2)
 M_DENIM = denim()
@@ -230,6 +232,25 @@ def blade(name, R, span, width, mat, parent=None, n=60, m=10):
     o = mesh_obj(name, vs, fs, mat, parent)
     add_mod_solid(o, 0.035)
     sub = o.modifiers.new('sub', 'SUBSURF'); sub.levels = 1; sub.render_levels = 1
+    # glowing copper lip along the outer (curled) edge and a fainter one on the spine
+    tube(name + '_lip', [vs[i * (m + 1) + m] for i in range(n + 1)], 0.012, M_EDGE, o)
+    tube(name + '_spine', [vs[i * (m + 1)] for i in range(n + 1)], 0.007, M_EDGE2, o)
+    # a couple of rivet plates near the spine
+    for u in (0.3, 0.55, 0.75):
+        i = int(u * n); p = Vector(vs[i * (m + 1) + 2])
+        c = cyl(name + '_plate', 0.03, 0.05, M_DARK, o, loc=p * 1.01)
+        c.rotation_euler = p.to_track_quat('Z', 'Y').to_euler()
+    return o
+
+def tube(name, pts, radius, mat, parent=None):
+    cu = bpy.data.curves.new(name, 'CURVE'); cu.dimensions = '3D'; cu.bevel_depth = radius
+    cu.bevel_resolution = 2
+    sp = cu.splines.new('POLY'); sp.points.add(len(pts) - 1)
+    for i, q in enumerate(pts):
+        sp.points[i].co = (*q, 1)
+    o = bpy.data.objects.new(name, cu); bpy.context.collection.objects.link(o)
+    cu.materials.append(mat)
+    if parent: o.parent = parent
     return o
 
 def cyl(name, r, depth, mat, parent=None, loc=(0, 0, 0), rot=(0, 0, 0), verts=24):
@@ -291,7 +312,7 @@ shell = empty('Shell', root)
 drive(shell, 'rotation_euler', 1, '0.12*sin(T*tau)')
 drive(shell, 'rotation_euler', 2, '0.25*sin(T*tau+0.6)')
 blade_specs = [  # (angle around view axis in degrees, depth lean, span, width)
-    (140, 0.75, 1.5, 0.36), (62, -0.65, 1.0, 0.28), (-5, 0.7, 0.9, 0.24), (-75, -0.7, 1.3, 0.32), (-150, 0.6, 0.9, 0.26)]
+    (140, 0.45, 1.7, 0.62), (62, -0.45, 1.1, 0.42), (-8, 0.5, 0.95, 0.36), (-75, -0.5, 1.4, 0.5), (-150, 0.45, 1.0, 0.4)]
 for k, (phi, lean, span, w) in enumerate(blade_specs):
     holder = empty(f'bladeH{k}', shell, rot=(math.pi / 2 + lean, math.radians(-phi), 0))
     blade(f'blade{k}', 2.0, span, w, M_STEEL, holder)
@@ -325,6 +346,20 @@ for k, (r, teeth, rot, turns) in enumerate([(0.42, 36, (0, 0, 0), 1), (0.33, 28,
     h = empty(f'gearH{k}', core, rot=rot)
     g = gear(f'gear{k}', r, teeth, 0.04, M_COPPER, h)
     drive(g, 'rotation_euler', 2, f'T*tau*{turns}')
+for k in range(8):
+    a = TAU * k / 8
+    h = empty(f'sgH{k}', core, rot=(0.7 * k, 0.4 * k, a))
+    g = gear(f'sg{k}', 0.09 + 0.03 * (k % 3), 12 + 2 * (k % 3), 0.03, M_COPPER, h, loc=(0.34, 0, 0))
+    drive(g, 'rotation_euler', 2, f'T*tau*{(-1) ** k * 4}')
+for k in range(3):
+    h = empty(f'cageH{k}', core, rot=(k * 1.05, k * 0.7, 0))
+    c = flat_ring(f'cage{k}', 0.56, 0.62, M_COPPER, n=96, parent=h, thick=0.02)
+    drive(c, 'rotation_euler', 2, f'T*tau*{(-1) ** k * 2}')
+glow_me = bpy.data.meshes.new('glow')
+bm = bmesh.new(); bmesh.ops.create_uvsphere(bm, u_segments=24, v_segments=12, radius=0.24); bm.to_mesh(glow_me); bm.free()
+M_GLOW, E_GLOW = emissive('Glow', (1.0, 0.3, 0.03), 2)
+glow_me.materials.append(M_GLOW); glow_me.shade_smooth()
+go = bpy.data.objects.new('glow', glow_me); bpy.context.collection.objects.link(go); go.parent = core
 light = bpy.data.lights.new('coreLight', 'POINT'); light.color = (1, 0.5, 0.15); light.energy = 250
 light.shadow_soft_size = 0.2
 lo = bpy.data.objects.new('coreLight', light); bpy.context.collection.objects.link(lo); lo.parent = core
@@ -372,7 +407,7 @@ for k in range(7):
 def denim_band():
     n, m = 200, 16
     vs, fs, uvs = [], [], []
-    R, W = 1.62, 0.62
+    R, W = 1.62, 0.66
     for i in range(n + 1):
         u = i / n
         a = (u - 0.5) * TAU * 0.95 - math.pi / 2
@@ -380,7 +415,8 @@ def denim_band():
         rr = R + 0.08 * math.sin(a * 2.0)
         for j in range(m + 1):
             v = j / m - 0.5
-            fold = 0.07 * math.sin(v * math.pi * 3 + a * 2) * (0.6 + 0.4 * math.cos(a))
+            fold = (0.1 * math.sin(v * math.pi * 3 + a * 2.5) + 0.05 * math.sin(v * math.pi * 7 - a * 4)) * (0.6 + 0.4 * math.cos(a))
+            if abs(v) > 0.44: fold += 0.06 * (abs(v) - 0.44) / 0.06  # hems roll outward
             z = v * W * math.cos(twist)
             rad = rr + v * W * math.sin(twist) + fold
             vs.append((rad * math.cos(a), rad * math.sin(a), z))
@@ -394,7 +430,7 @@ def denim_band():
     for poly in o.data.polygons:
         for li, vi in zip(poly.loop_indices, poly.vertices):
             uv.data[li].uv = uvs[vi]
-    s = o.modifiers.new('solid', 'SOLIDIFY'); s.thickness = 0.04; s.offset = 0
+    s = o.modifiers.new('solid', 'SOLIDIFY'); s.thickness = 0.05; s.offset = 0
     # rolled hem bump: subsurf for softness
     sub = o.modifiers.new('sub', 'SUBSURF'); sub.levels = 1; sub.render_levels = 2
     tex = bpy.data.textures.new('denimWave', 'CLOUDS'); tex.noise_scale = 0.9
@@ -403,7 +439,7 @@ def denim_band():
     drive(drv, 'location', 1, 'cos(T*tau)*0.8')
     dp = o.modifiers.new('wave', 'DISPLACE'); dp.texture = tex; dp.strength = 0.12; dp.mid_level = 0.5
     dp.texture_coords = 'OBJECT'; dp.texture_coords_object = drv
-    o.rotation_euler = (math.radians(-18), math.radians(20), 0)
+    o.rotation_euler = (math.radians(-32), math.radians(18), 0)
     return o
 band = denim_band()
 drive(band, 'rotation_euler', 2, '0.2*sin(T*tau)')
