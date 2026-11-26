@@ -12,10 +12,12 @@ SHEETS = {
   'mechanism-parts.png': ['ring-steel', 'ring-bronze', 'gear-large', 'gear-pinion', 'bearing', 'shaft'],
   'shell-blades.png': ['blade-top', 'blade-left', 'blade-top-right', 'blade-bottom-right', 'blade-bottom-left'],
   'core.png': ['core'],
+  'mechanism-faceon.png': ['ring-steel-face', 'ring-bronze-face', 'bearing-face', 'gear-pinion-face'],
 }
 
 def split(sheet, names, manifest):
-  im = np.asarray(Image.open(SRC+sheet).convert('RGBA'))
+  im = np.asarray(Image.open(SRC+sheet).convert('RGBA')).copy()
+  im[im[..., 3] < 8] = 0   # drop near-invisible haze (the face-on sheet has red speckles at alpha 1)
   a = im[..., 3]
   lab, n = nd.label(a > 24)
   sizes = np.bincount(lab.ravel()); sizes[0] = 0

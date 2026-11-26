@@ -25,7 +25,7 @@
 // Orb assembled from assets/orb-parts/ (split by tools/split_orb_parts.py). All coordinates are in the 1254 source canvas.
 const C = 627;  // centre of the source canvas
 const parts = {};
-const NAMES = ['ring-steel','ring-bronze','gear-large','gear-pinion','bearing','shaft','core',
+const NAMES = ['ring-steel-face','ring-bronze-face','gear-large','gear-pinion-face','bearing-face','shaft','core',
   'blade-top','blade-left','blade-top-right','blade-bottom-right','blade-bottom-left'];
 const BLADES = NAMES.filter(n => n.startsWith('blade'));
 
@@ -36,7 +36,7 @@ const STATES = {
   thinking: { open: .35, spin: 1.2, glow: .8,  pulse: .5,  gimbal: 1 },
   talking:  { open: .7,  spin: .6,  glow: 1,   pulse: 1,   gimbal: .6 },
 };
-const tune = { openDist: 110, openTurn: 10, shellSpin: 1, gearSize: 1.35, ringSize: 1.45, coreSize: 1.55, bearingSize: 1.0 };
+const tune = { openDist: 110, openTurn: 10, shellSpin: 1, gearSize: 1.35, ringSize: 1.45, coreSize: 1.55, bearingSize: 1.2 };
 const show = { shaft: false, bearing: true, gears: true, rings: true, blades: true, glow: true };
 let target = STATES.idle, live = { ...STATES.idle }, stateName = 'idle';
 
@@ -78,16 +78,16 @@ function draw(name, x, y, rot = 0, s = 1, sy = 1, alpha = 1) {
 
 // a gimbal ring: half behind the core, half in front. The ring art is already an ellipse, so we spin it in-plane
 // and breathe its height for a fake tilt; `front` picks which half (local y > 0) to draw.
+// Face-on ring art, tilted for real: `axis` turns slowly, the ring is squashed across it (cos of the tilt), and the
+// art spins in its own plane so the rivets travel round. Local y > 0 is the near half, drawn in front of the core.
 function ring(name, t, speed, phase, front) {
-  const p = parts[name], s = tune.ringSize;
-  const rot = phase + t * speed * .25 * live.gimbal;
-  const tilt = 1 - .35 * live.gimbal * (.5 + .5 * Math.sin(t * speed * .7 + phase));
-  ctx.save(); ctx.translate(C, C); ctx.rotate(rot); ctx.scale(s, s * tilt);
-  ctx.beginPath();
-  // the ring's own axis is diagonal in the art (about -30°), so split along that line
-  const a = -.52; ctx.rotate(a);
-  if (front) ctx.rect(-2000, 0, 4000, 2000); else ctx.rect(-2000, -2000, 4000, 2000);
-  ctx.rotate(-a); ctx.clip();
+  const p = parts[name], s = tune.ringSize * 700 / p.w;
+  const axis = phase + t * speed * .12;
+  const tilt = 1.05 + .35 * live.gimbal * Math.sin(t * speed * .5 + phase);   // radians away from face-on
+  const spinIn = t * speed * .4 * (.3 + live.gimbal);
+  ctx.save(); ctx.translate(C, C); ctx.rotate(axis);
+  ctx.beginPath(); if (front) ctx.rect(-2000, 0, 4000, 2000); else ctx.rect(-2000, -2000, 4000, 2000); ctx.clip();
+  ctx.scale(s, s * Math.abs(Math.cos(tilt))); ctx.rotate(spinIn);
   ctx.drawImage(p.img, -p.w / 2, -p.h / 2);
   ctx.restore();
 }
@@ -121,15 +121,15 @@ function frame(now) {
     const g = tune.gearSize, rg = 200 * g;           // big gear's outer radius ~200 px at size 1
     draw('gear-large', C, C, gearAngle, g, 1, .85);
     // pinion meshes at the lower right, turning the other way 36/14 times as fast
-    const ang = .75, rp = 140 * g * .55;
-    draw('gear-pinion', C + Math.cos(ang) * (rg + rp * .8), C + Math.sin(ang) * (rg + rp * .8), -gearAngle * 36 / 14, g * .55);
+    const ang = .75, ps = g * .34, rp = 240 * ps;   // face-on pinion art is ~480 px across
+    draw('gear-pinion-face', C + Math.cos(ang) * (rg + rp * .82), C + Math.sin(ang) * (rg + rp * .82), -gearAngle * 36 / 14, ps);
   }
-  if (show.rings) { ring('ring-steel', T, 1, 0, false); ring('ring-bronze', T, -1.4, 2, false); }
-  if (show.bearing) draw('bearing', C + 20, C + 8, 0, tune.bearingSize);
+  if (show.rings) { ring('ring-steel-face', T, 1, 0, false); ring('ring-bronze-face', T, -1.4, 2, false); }
+  if (show.bearing) draw('bearing-face', C, C + 4, 0, tune.bearingSize);   // its bore sits on the core
   if (show.glow) glow(C, C, 260 * tune.coreSize * (.7 + .3 * pulse), live.glow * (.35 + .5 * pulse));
   draw('core', C, C, 0, tune.coreSize * (1 + .04 * pulse));
   if (show.glow) glow(C, C, 70 * tune.coreSize, live.glow * (.4 + .6 * pulse));
-  if (show.rings) { ring('ring-steel', T, 1, 0, true); ring('ring-bronze', T, -1.4, 2, true); }
+  if (show.rings) { ring('ring-steel-face', T, 1, 0, true); ring('ring-bronze-face', T, -1.4, 2, true); }
 
   if (show.blades) {
     const open = live.open + .05 * live.pulse * breath;
