@@ -1,0 +1,111 @@
+{
+ "canvas": 1254,
+ "ring-steel": {
+  "sheet": "mechanism-parts.png",
+  "x": 109,
+  "y": 36,
+  "w": 486,
+  "h": 386,
+  "cx": 352.0,
+  "cy": 229.0
+ },
+ "ring-bronze": {
+  "sheet": "mechanism-parts.png",
+  "x": 740,
+  "y": 50,
+  "w": 424,
+  "h": 362,
+  "cx": 952.0,
+  "cy": 231.0
+ },
+ "gear-large": {
+  "sheet": "mechanism-parts.png",
+  "x": 120,
+  "y": 430,
+  "w": 406,
+  "h": 397,
+  "cx": 323.0,
+  "cy": 628.5
+ },
+ "gear-pinion": {
+  "sheet": "mechanism-parts.png",
+  "x": 785,
+  "y": 471,
+  "w": 296,
+  "h": 306,
+  "cx": 933.0,
+  "cy": 624.0
+ },
+ "bearing": {
+  "sheet": "mechanism-parts.png",
+  "x": 751,
+  "y": 838,
+  "w": 362,
+  "h": 404,
+  "cx": 932.0,
+  "cy": 1040.0
+ },
+ "shaft": {
+  "sheet": "mechanism-parts.png",
+  "x": 91,
+  "y": 848,
+  "w": 490,
+  "h": 392,
+  "cx": 336.0,
+  "cy": 1044.0
+ },
+ "blade-top": {
+  "sheet": "shell-blades.png",
+  "x": 552,
+  "y": 31,
+  "w": 473,
+  "h": 280,
+  "cx": 788.5,
+  "cy": 171.0
+ },
+ "blade-left": {
+  "sheet": "shell-blades.png",
+  "x": 47,
+  "y": 74,
+  "w": 524,
+  "h": 766,
+  "cx": 309.0,
+  "cy": 457.0
+ },
+ "blade-top-right": {
+  "sheet": "shell-blades.png",
+  "x": 909,
+  "y": 294,
+  "w": 287,
+  "h": 292,
+  "cx": 1052.5,
+  "cy": 440.0
+ },
+ "blade-bottom-right": {
+  "sheet": "shell-blades.png",
+  "x": 542,
+  "y": 656,
+  "w": 650,
+  "h": 568,
+  "cx": 867.0,
+  "cy": 940.0
+ },
+ "blade-bottom-left": {
+  "sheet": "shell-blades.png",
+  "x": 175,
+  "y": 753,
+  "w": 614,
+  "h": 336,
+  "cx": 482.0,
+  "cy": 921.0
+ },
+ "core": {
+  "sheet": "core.png",
+  "x": 561,
+  "y": 564,
+  "w": 130,
+  "h": 125,
+  "cx": 626.0,
+  "cy": 626.5
+ }
+}
