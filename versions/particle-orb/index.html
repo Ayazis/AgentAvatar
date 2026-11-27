@@ -67,7 +67,7 @@
   "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
 } }
 </script>
-<script type="module" src="orb.js"></script>
+<script type="module">import(`./orb.js?v=${Date.now()}`);</script>
 </head>
 <body>
 <div class="stage"><canvas id="c" aria-label="A shell of glowing denim plates around a burning particle core, floating above a knotted denim scarf"></canvas></div>
@@ -93,7 +93,7 @@
     <label>Core glow <output id="o-core"></output><input id="core" type="range" min="0" max="2.5" step=".01" value="1"></label>
     <label class="check"><input id="lockRays" type="checkbox" checked> Core rays follow core glow</label>
     <div class="sub">Core rays <span>through the gaps</span></div>
-    <label>Amount <output id="o-rayAmount"></output><input id="rayAmount" type="range" min="0" max="2" step=".01" value="1"></label>
+    <label>Shafts <output id="o-rayAmount"></output><input id="rayAmount" type="range" min="2" max="14" step="1" value="7"></label>
     <label>Intensity <output id="o-rays"></output><input id="rays" type="range" min="0" max="3" step=".01" value="1"></label>
     <label>Length <output id="o-rayLength"></output><input id="rayLength" type="range" min=".1" max="1" step=".01" value=".85"></label>
     <div class="sub">Hem rays <span>from the plate edges</span></div>
@@ -104,21 +104,21 @@
   <details class="group">
     <summary>Particles &amp; glow</summary>
     <label>Particle size <output id="o-size"></output><input id="size" type="range" min=".4" max="2.5" step=".01" value="1"></label>
-    <label>Swirls <output id="o-swirls"></output><input id="swirls" type="range" min="0" max="1.5" step=".01" value="1"></label>
+    <label>Swirls <output id="o-swirls"></output><input id="swirls" type="range" min="0" max="7" step="1" value="3"></label>
     <label>Swirl speed <output id="o-swirlSpeed"></output><input id="swirlSpeed" type="range" min="0" max="3" step=".01" value="1"></label>
     <label>Bloom <output id="o-bloom"></output><input id="bloom" type="range" min="0" max="1.6" step=".005" value="1"></label>
   </details>
   <details class="group">
     <summary>Ribbons &amp; swirl dust</summary>
     <div class="sub">Ribbons <span>from the main console</span></div>
-    <label>Count <output id="o-ribCount"></output><input id="ribCount" type="range" min="0" max="3" step=".01" value="3"></label>
-    <label>Amount <output id="o-ribAmount"></output><input id="ribAmount" type="range" min="0" max="4000" step="10" value="1500"></label>
+    <label>Count <output id="o-ribCount"></output><input id="ribCount" type="range" min="0" max="3" step="1" value="3"></label>
+    <label>Amount <output id="o-ribAmount"></output><input id="ribAmount" type="range" min="0" max="4000" step="50" value="1500"></label>
     <label>Brightness <output id="o-ribBright"></output><input id="ribBright" type="range" min="0" max="3" step=".01" value="1"></label>
     <label>Speed <output id="o-ribSpeed"></output><input id="ribSpeed" type="range" min="0" max="4" step=".01" value="1"></label>
     <label>Width <output id="o-ribWidth"></output><input id="ribWidth" type="range" min="0" max="3" step=".01" value="1"></label>
     <label>Orbit size <output id="o-ribOrbit"></output><input id="ribOrbit" type="range" min=".5" max="1.8" step=".01" value="1"></label>
     <div class="sub">Swirl dust</div>
-    <label>Amount <output id="o-dustAmount"></output><input id="dustAmount" type="range" min="0" max="3000" step="10" value="700"></label>
+    <label>Amount <output id="o-dustAmount"></output><input id="dustAmount" type="range" min="0" max="3000" step="50" value="700"></label>
     <label>Brightness <output id="o-dustBright"></output><input id="dustBright" type="range" min="0" max="3" step=".01" value="1"></label>
     <label>Speed <output id="o-dustSpeed"></output><input id="dustSpeed" type="range" min="0" max="4" step=".01" value="1"></label>
   </details>
@@ -137,8 +137,8 @@
     <label>Tap pulse <output id="o-pulse"></output><input id="pulse" type="range" min="0" max="3" step=".01" value="1"></label>
     <div class="note">Tap the orb (without dragging) to greet her.</div>
     <div class="sub">Random boosts <span>a value rises for a moment</span></div>
-    <label>Every (seconds, 0 = off) <output id="o-flareEvery"></output><input id="flareEvery" type="range" min="0" max="30" step=".5" value="8"></label>
-    <label>Length (seconds) <output id="o-flareLen"></output><input id="flareLen" type="range" min=".2" max="4" step=".05" value="1"></label>
+    <label>How often <output id="o-flareEvery"></output><input id="flareEvery" type="range" min="0" max="30" step=".5" value="8"></label>
+    <label>Length <output id="o-flareLen"></output><input id="flareLen" type="range" min=".2" max="4" step=".05" value="1"></label>
     <label>Strength <output id="o-flareAmount"></output><input id="flareAmount" type="range" min="0" max="3" step=".01" value=".8"></label>
     <div class="ticks">
       <label class="check"><input type="checkbox" data-flare="bloom"> Bloom</label>
