@@ -9,7 +9,7 @@
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; background: #070307; color: #e9e2ea; font: 13px/1.4 system-ui, sans-serif; overflow: hidden; }
   .stage { position: fixed; inset: 0; display: grid; place-items: center; }
-  canvas { display: block; width: min(100vw, 150vh); height: min(66.667vw, 100vh); }
+  canvas { display: block; width: min(100vw, 150vh); height: min(66.667vw, 100vh); touch-action: pan-y; }
   .panel { position: fixed; top: 12px; right: 12px; width: 240px; padding: 12px 14px; border-radius: 10px;
            background: rgba(20, 12, 22, .72); border: 1px solid rgba(255,255,255,.08); backdrop-filter: blur(8px); }
   .panel h1 { font-size: 13px; font-weight: 600; margin: 0 0 10px; letter-spacing: .02em; }
@@ -24,6 +24,21 @@
   select { grid-column: 1 / -1; width: 100%; background: #1c121e; color: inherit; border: 1px solid rgba(255,255,255,.12); border-radius: 6px; padding: 4px; font: inherit; }
   details summary { cursor: pointer; color: #9a8ea0; margin-top: 6px; }
   .hint { color: #7d7282; margin-top: 8px; font-size: 12px; }
+  .sliders > summary { margin: 0 0 4px; }
+  .states { margin-bottom: 8px; }
+
+  /* portrait and narrow screens: the scene on top, the controls below it, and the page scrolls */
+  @media (max-aspect-ratio: 4/3) {
+    html, body { height: auto; overflow: auto; }
+    .stage { position: static; display: block; }
+    canvas { width: 100vw; height: 66.667vw; }
+    .panel { position: static; width: auto; margin: 12px; backdrop-filter: none; }
+  }
+  /* short landscape (phones on their side): a smaller panel, sliders folded away until asked for */
+  @media (min-aspect-ratio: 4/3) and (max-height: 520px) {
+    .panel { top: 8px; right: 8px; width: 200px; padding: 8px 10px; max-height: calc(100vh - 16px); overflow: auto; }
+    .panel h1, .hint { display: none; }
+  }
   a { color: #d9b09a; }
 </style>
 <script type="importmap">
@@ -44,6 +59,8 @@
     <button data-state="idle" class="on">Idle</button>
     <button data-state="working">Working</button>
   </div>
+  <details class="sliders" id="sliders" open>
+  <summary>Tune</summary>
   <label>Opening <output id="o-open"></output><input id="open" type="range" min="0" max="1.6" step=".01" value="1"></label>
   <label>Turn speed <output id="o-spin"></output><input id="spin" type="range" min="0" max="3" step=".01" value="1"></label>
   <label>Core glow <output id="o-core"></output><input id="core" type="range" min="0" max="2" step=".01" value="1"></label>
@@ -55,6 +72,8 @@
     <label>Plate gap <output id="o-gap"></output><input id="gap" type="range" min=".005" max=".12" step=".005" value=".03"></label>
     <label>Density <output id="o-density"></output><input id="density" type="range" min=".3" max="2" step=".05" value="1"></label>
   </details>
+  </details>
+  <script>if (matchMedia('(min-aspect-ratio: 4/3) and (max-height: 520px)').matches) document.getElementById('sliders').open = false;</script>
   <div class="hint">Keys 1 · 2 · 3 switch state. Drag to turn the orb. <a href="../index.html">All versions</a></div>
 </div>
 </body>
