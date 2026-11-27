@@ -66,12 +66,12 @@ const loader = new THREE.TextureLoader();
 const tex = (n, srgb = true) => { const t = loader.load(`../../assets/base/scarf-${n}.webp`); if (srgb) t.colorSpace = THREE.SRGBColorSpace; return t; };
 const bgPass = new ShaderPass({
   uniforms: { tDiffuse: { value: null }, tLit: { value: tex('lit') }, tUnlit: { value: tex('unlit') }, tBright: { value: tex('bright') }, uLit: { value: 0 },
-              tNormal: { value: tex('normal', false) }, tReach: { value: tex('reach', false) }, tLight: { value: null }, tGlow: { value: null }, uBloomK: { value: 1 },
+              tNormal: { value: tex('normal', false) }, tReach: { value: tex('reach', false) }, tLight: { value: null }, tGlow: { value: null }, uBloomK: { value: 1 }, uShellOpacity: { value: 0 },
               uLightUV: { value: new THREE.Vector2(.5, .7) }, uLightGain: { value: 1 }, uCode: { value: 1 }, tRays: { value: null }, tOcc: { value: null }, uRays: { value: 1 } },
   vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0., 1.); }`,
   fragmentShader: `
     varying vec2 vUv; uniform sampler2D tDiffuse, tLit, tUnlit, tBright, tRays, tOcc, tNormal, tReach, tLight, tGlow;
-    uniform float uLit, uRays, uLightGain, uCode, uBloomK; uniform vec2 uLightUV;
+    uniform float uLit, uRays, uLightGain, uCode, uBloomK, uShellOpacity; uniform vec2 uLightUV;
     void main(){
       vec2 p = vUv;
       float r = length((p - vec2(.5, .66)) * vec2(1.35, 1.));
@@ -106,7 +106,7 @@ const bgPass = new ShaderPass({
       vec3 albedo = mix(u.rgb, vec3(dot(u.rgb, vec3(.3, .59, .11))), .55) * 3. + .03;   // denim takes the light's colour, as in the painted bright version
       vec4 code = vec4(u.rgb + albedo * light + light * spec * .12, u.a);
       vec4 s = mix(painted, code, uCode);
-      gl_FragColor = vec4(mix(bg, s.rgb, s.a) + texture2D(tDiffuse, p).rgb + texture2D(tRays, p).rgb * uRays * (1. - .8 * texture2D(tOcc, p).a), 1.);
+      gl_FragColor = vec4(mix(bg, s.rgb, s.a) + texture2D(tDiffuse, p).rgb + texture2D(tRays, p).rgb * uRays * (1. - mix(.8, 1., uShellOpacity) * texture2D(tOcc, p).a), 1.);
     }`,
 });
 const bgMat = bgPass.material;
@@ -226,16 +226,16 @@ const plateUniforms = common();
 // the inner wisps, the far side of the shell, ribbons passing behind) is hidden. It covers only a share of the
 // pixels, set by the opacity, like a screen door: 0 is see-through, 1 is a solid shell. Drawn before everything else.
 const backMat = new THREE.ShaderMaterial({
-  uniforms: { ...plateUniforms, uOpacity: { value: 0 } },
+  uniforms: { ...plateUniforms, uOpacity: { value: 0 }, uBackSize: { value: 8 } },
   depthTest: true, depthWrite: true, transparent: false,
   vertexShader: `
     attribute float aKind;
-    uniform float uPx, uDist, uOpacity;
+    uniform float uPx, uDist, uOpacity, uBackSize;
     void main(){
       vec4 mv = modelViewMatrix * vec4(normalize(position) * .955, 1.);
       gl_Position = projectionMatrix * mv;
-      bool part = aKind < .5 || (aKind > 1.5 && aKind < 2.5);          // the cloth and the hem make the solid plate
-      gl_PointSize = part && uOpacity > .001 ? 3.6 * uPx * (uDist / -mv.z) : 0.;
+      // every point of the plate, drawn big enough to overlap its neighbours, so a solid plate has no pinholes
+      gl_PointSize = uOpacity > .001 ? uBackSize * uPx * (uDist / -mv.z) : 0.;
     }`,
   fragmentShader: `
     uniform float uOpacity;
@@ -1020,6 +1020,8 @@ function frame(dt) {
 
   tempo = tempoOf(live.energy);
   backMat.uniforms.uOpacity.value = Math.min(1, Math.max(0, live.shellOpacity));
+  bgMat.uniforms.uShellOpacity.value = backMat.uniforms.uOpacity.value;
+  backMat.uniforms.uBackSize.value = 8 / Math.sqrt(tune.density);  // the stipple lines spread out at low density
   turn += dt * live.spin * tempo;
   if (!dragging) { dragY *= 1 - ease(1.5); }
   spin.rotation.set(dragY, turn + dragX, 0);
