@@ -63,22 +63,21 @@ const bgPass = new ShaderPass({
       vec4 painted = uLit < 1. ? mix(u, l, uLit) : mix(l, b, smoothstep(0., 1., uLit - 1.));   // more light: lit, then bright
 
       // code light: the unlit scarf lit by everything the orb draws, in its own colours. The whole orb is rendered
-      // small into a light buffer; six spots across the orb's lower half are read from a very blurred level of it
+      // small into a light buffer; a grid of spots over the orb's lower half is read from a blurred level of it
       // and each lights the scarf from its own direction, so blue plates and cool swirls throw blue light and the
       // core and warm wisps throw orange. The normals shape the folds; the reach mask (where ChatGPT's bright
       // version has light) keeps the light out of places the painting leaves dark.
       vec3 N = normalize(texture2D(tNormal, p).rgb * 2. - 1.);
       float reach = texture2D(tReach, p).r;
       vec3 light = vec3(0.); float spec = 0.;
-      for (int i = 0; i < 6; i++) {
-        vec2 o = i == 0 ? vec2(0., 0.) : i == 1 ? vec2(-.11, -.02) : i == 2 ? vec2(.11, -.02)
-               : i == 3 ? vec2(0., -.17) : i == 4 ? vec2(-.09, -.13) : vec2(.09, -.13);
+      for (int i = 0; i < 20; i++) {                           // a 5 x 4 grid over the orb's lower half and just below it
+        vec2 o = vec2(float(i - (i / 5) * 5) - 2., -float(i / 5)) * vec2(.075, .095);
         vec2 q = uLightUV + o;
-        vec3 c = textureLod(tLight, q, 3.5).rgb;
+        vec3 c = textureLod(tLight, q, 2.6).rgb;
         vec2 d = (q - p) * vec2(1.5, 1.);
-        vec3 L = normalize(vec3(d, .22));
+        vec3 L = normalize(vec3(d, .2));
         float wrap = max((dot(N, L) + .3) / 1.3, 0.);
-        float att = 1. / (1. + dot(d, d) * 7.);
+        float att = 1. / (1. + dot(d, d) * 14.);                // close light counts most: a wisp dipping low lights the folds under it
         light += c * wrap * att;
         spec += pow(max(dot(N, normalize(L + vec3(0., 0., 1.))), 0.), 20.) * att * dot(c, vec3(.33));
       }
@@ -98,17 +97,17 @@ composer.addPass(new OutputPass());
 // ---------------------------------------------------------------- shared point sprite
 // A soft gaussian with a hot pinpoint centre: reads as a light, not a flat dot.
 const SPRITE_FRAG = `
-  uniform float uSize;
+  uniform float uSize, uLightMul;
   varying vec3 vCol; varying float vHot;
   void main(){
     vec2 c = gl_PointCoord * 2. - 1.; float d = dot(c, c);
     if (d > 1.) discard;
     float a = exp(-d * 5.) * (1. - d) + vHot * exp(-d * 40.);
-    gl_FragColor = vec4(vCol * a * min(1., pow(uSize, -1.4)), 1.);   // big sprites dim so they don't flood the bloom; small ones just shrink
+    gl_FragColor = vec4(vCol * a * min(1., pow(uSize, -1.4)) * uLightMul, 1.);   // big sprites dim so they don't flood the bloom; small ones just shrink
   }`;
 const common = () => ({
   uTime: { value: 0 }, uPower: { value: 1 }, uCore: { value: 1 }, uEnergy: { value: 0 },
-  uSize: { value: 1 }, uPx: { value: 1 }, uDist: { value: DIST }, uHalo: { value: 1 }, uGain: { value: 1 },
+  uSize: { value: 1 }, uPx: { value: 1 }, uDist: { value: DIST }, uHalo: { value: 1 }, uGain: { value: 1 }, uLightMul: { value: 1 },
 });
 const pointsMat = (uniforms, vertexShader) => new THREE.ShaderMaterial({
   uniforms, vertexShader, fragmentShader: SPRITE_FRAG,
@@ -361,7 +360,7 @@ const heartMat = new THREE.ShaderMaterial({
   blending: THREE.AdditiveBlending, depthTest: false, depthWrite: false, transparent: true,
   vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.); }`,
   fragmentShader: `
-    varying vec2 vUv; uniform float uTime, uCore, uPower, uEnergy;
+    varying vec2 vUv; uniform float uTime, uCore, uPower, uEnergy, uLightMul;
     void main(){
       vec2 p = vUv * 2. - 1.; float r = length(p), a = atan(p.y, p.x);
       float hot = exp(-r * r * 400.) * 2.5;
@@ -370,7 +369,7 @@ const heartMat = new THREE.ShaderMaterial({
                  + pow(abs(cos(a * 3. - uTime * .08 + 1.)), 160.) * exp(-r * 3.8) * .55 * (.5 + uEnergy);
       vec3 col = vec3(1., .93, .8) * hot + vec3(1., .34, .05) * glow + vec3(1., .62, .28) * rays;
       float flicker = .92 + .08 * sin(uTime * 6.7) * sin(uTime * 2.3 + 1.);
-      gl_FragColor = vec4(col * uCore * uPower * flicker * smoothstep(1., .55, r), 1.);
+      gl_FragColor = vec4(col * uCore * uPower * flicker * smoothstep(1., .55, r) * uLightMul, 1.);
     }`,
 });
 const heart = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 1.4), heartMat);
@@ -604,10 +603,13 @@ bgMat.uniforms.tLight.value = lightRT.texture;
 let lightPx = 1;
 function renderLightBuffer() {
   for (const u of allUniforms) u.uPx.value = lightPx / 4;     // same look at a quarter of the pixels
+  // what throws light on the scarf: the plates are big and steady, so they count less; the moving parts count more
+  plateUniforms.uLightMul.value = .3; coreUniforms.uLightMul.value = .7; haloUniforms.uLightMul.value = 1.8;
+  sparkUniforms.uLightMul.value = 3; swirlUniforms.uLightMul.value = 3.5;
   renderer.setRenderTarget(lightRT); renderer.setClearColor(0x000000, 1); renderer.clear();
   renderer.render(scene, camera);
   renderer.setRenderTarget(null);
-  for (const u of allUniforms) u.uPx.value = lightPx;
+  for (const u of allUniforms) { u.uPx.value = lightPx; u.uLightMul.value = 1; }
 }
 
 const lightPos = new V3();
@@ -700,7 +702,7 @@ function frame(dt) {
   }
   const flick = .96 + .04 * Math.sin(t * 6.7) * Math.sin(t * 2.3 + 1);
   bgMat.uniforms.uLit.value = Math.min(2, live.lit * tune.core) * flick;
-  bgMat.uniforms.uLightGain.value = 2.2 * tune.scarfLight;
+  bgMat.uniforms.uLightGain.value = 1.1 * tune.scarfLight;
   bgMat.uniforms.uCode.value = tune.scarfMode;
   bloom.strength = .45 * Math.pow(tune.bloom, 1.6) * (.5 + .5 * live.power);   // gentle near 1, lower ceiling
   rayUniforms.uHemRays.value = tune.hemRays;
