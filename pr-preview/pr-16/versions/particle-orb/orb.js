@@ -20,11 +20,11 @@ const DIST = 1 / (Math.tan(FOV * Math.PI / 360) * 2 * ORB_R);   // camera distan
 // Each state is a full preset: every value it has is on a slider, and the panel edits the state on screen.
 // Switching state glides every value to the other preset. Presets are saved in this browser.
 const SHARED = { size: 1, bloom: 1, rayLength: .85, rayAmount: 1, hemLength: .85, hemAmount: 1, swirlSpeed: 1, scarfLight: 1,
-  breathRate: 1, breathDepth: 1, ribCount: 3, ribAmount: 1500, ribSpeed: 1, ribBright: 1, ribWidth: 1, ribOrbit: 1, dustAmount: 700, dustSpeed: 1, dustBright: 1 };
+  breathRate: 1, breathDepth: 1, pulse: 1, flareEvery: 8, flareLen: 1, flareAmount: .8, ribCount: 3, ribAmount: 1500, ribSpeed: 1, ribBright: 1, ribWidth: 1, ribOrbit: 1, dustAmount: 700, dustSpeed: 1, dustBright: 1 };
 const DEFAULTS = {
-  off:     { ...SHARED, breathDepth: .6, open: 0,   spin: .03, core: .05, rays: .02, hemRays: .45, swirls: 0,   power: .16, halo: .12, energy: 0,   lit: 0,    bloom: .7 },
+  off:     { ...SHARED, breathDepth: .6, pulse: .6, flareEvery: 0, open: 0,   spin: .03, core: .05, rays: .02, hemRays: .45, swirls: 0,   power: .16, halo: .12, energy: 0,   lit: 0,    bloom: .7 },
   idle:    { ...SHARED, open: .32, spin: .12, core: 1,   rays: .66, hemRays: .66, swirls: .45, power: 1,   halo: .7,  energy: .25, lit: 1 },
-  working: { ...SHARED, breathRate: 1.37, ribSpeed: 2.6, ribWidth: 1.25, dustSpeed: 2.6, dustBright: 1.6, open: 1,   spin: .38, core: 1.55, rays: 2,  hemRays: 1.3, swirls: 1,   power: 1.1, halo: 1.15, energy: 1,  lit: 1.75 },
+  working: { ...SHARED, breathRate: 1.37, flareEvery: 4, ribSpeed: 2.6, ribWidth: 1.25, dustSpeed: 2.6, dustBright: 1.6, open: 1,   spin: .38, core: 1.55, rays: 2,  hemRays: 1.3, swirls: 1,   power: 1.1, halo: 1.15, energy: 1,  lit: 1.75 },
 };
 const KEYS = Object.keys(DEFAULTS.idle);
 const STORE = 'rosie-particle-orb-presets-v1';
@@ -36,7 +36,10 @@ const live = { ...presets.idle };
 let target = presets.idle;
 
 // settings that belong to the build, not to a state
-const tune = { scarfMode: 1, layout: 6, gap: .03, density: 1, ...(saved.tune || {}) };
+const FLARE_TARGETS = ['bloom', 'core', 'rays', 'hemRays', 'open', 'swirls', 'ribBright', 'dustBright', 'energy'];
+const tune = { scarfMode: 1, layout: 6, gap: .03, density: 1,
+  flareOn: { bloom: true, core: true, rays: true, hemRays: true, open: false, swirls: true, ribBright: true, dustBright: true, energy: false },
+  ...(saved.tune || {}) };
 const save = () => { try { localStorage.setItem(STORE, JSON.stringify({ presets, tune })); } catch {} };
 
 // ---------------------------------------------------------------- renderer
@@ -294,7 +297,7 @@ function buildShell() {
 
 const m1 = new THREE.Matrix4(), m2 = new THREE.Matrix4(), m3 = new THREE.Matrix4();
 function placePlate(p, t) {
-  const o = p.open;
+  const o = p.open * openBoost;
   const pushOut = o * (.03 + .1 * p.k) + .006 * Math.sin(t * .9 + p.phase) * live.power + .012 * breath;   // plates part on the in-breath
   const flap = o * (.26 + .38 * p.k) + .02 * Math.sin(t * .7 + p.phase) * o;
   const twirl = o * .3 * (p.k2 - .5);
@@ -628,7 +631,7 @@ function updateExtras(dt, t) {
     const tw = .88 + .12 * Math.sin(t * 1.3 + p.k * 20);
     for (let k = 0; k < RIB_TRAIL; k++) {
       const sk = sPos - k * Math.sign(rb.speed) * .022 * (.4 + .6 * L.ribSpeed);
-      const r = 1.55 + .14 * Math.sin(3 * sk + t * .5 + rb.phase) + .07 * Math.sin(5 * sk - t * .35) + .04 * breath;
+      const r = 1.55 + .14 * Math.sin(3 * sk + t * .5 + rb.phase) + .07 * Math.sin(5 * sk - t * .35) + .04 * breath + .1 * pulseV;
       const cs = Math.cos(sk), ss = Math.sin(sk);
       let x = r * cs, y = r * ss;
       let z = .26 * Math.sin(2 * sk + t * .4 + rb.phase) + .07 * Math.sin(5 * sk - t * 1.4 + rb.phase);
@@ -649,6 +652,7 @@ function updateExtras(dt, t) {
     if (p.d >= dfrac) continue;
     let r = p.r;
     if (p.breathe) r *= .25 + .75 * (.5 + .5 * Math.cos(t * .45 + p.bph));
+    r *= 1 + .5 * pulseV;                                              // the tap pushes the dust out
     const a0 = p.ph + dustClock * p.sp * (.09 / r);
     const ci = Math.cos(p.incl), si = Math.sin(p.incl), cn = Math.cos(p.node + t * .05), sn = Math.sin(p.node + t * .05);
     const tw = .7 + .3 * Math.sin(t * 3 + p.k);
@@ -821,13 +825,17 @@ new ResizeObserver(resize).observe(canvas);
 
 // ---------------------------------------------------------------- input
 let dragX = 0, dragY = 0, dragging = false, lastX = 0, lastY = 0;
-canvas.addEventListener('pointerdown', e => { dragging = true; lastX = e.clientX; lastY = e.clientY; canvas.setPointerCapture(e.pointerId); });
+let downX = 0, downY = 0;
+canvas.addEventListener('pointerdown', e => { dragging = true; lastX = downX = e.clientX; lastY = downY = e.clientY; canvas.setPointerCapture(e.pointerId); });
 canvas.addEventListener('pointermove', e => {
   if (!dragging) return;
   dragX += (e.clientX - lastX) * .008; dragY += (e.clientY - lastY) * .008;
   dragY = Math.max(-1, Math.min(1, dragY)); lastX = e.clientX; lastY = e.clientY;
 });
-canvas.addEventListener('pointerup', () => dragging = false);
+canvas.addEventListener('pointerup', e => {
+  dragging = false;
+  if (Math.hypot(e.clientX - downX, e.clientY - downY) < 8) tapAge = 0;      // a tap, not a drag: pulse
+});
 
 function setState(s) {
   editing = s; target = presets[s];
@@ -884,6 +892,13 @@ document.getElementById('copySettings').onclick = async e => {
 };
 showPreset();
 
+// the boost targets: ticks, shared by all states
+for (const box of document.querySelectorAll('[data-flare]')) {
+  box.checked = !!tune.flareOn[box.dataset.flare];
+  box.addEventListener('change', () => { tune.flareOn[box.dataset.flare] = box.checked; save(); });
+}
+document.getElementById('boostNow').onclick = () => addFlare(t);
+
 // ---------------------------------------------------------------- frame loop
 buildShell();
 resize();
@@ -900,11 +915,52 @@ function updateBreath(dt) {
   const p = breathPhase, sm = v => v * v * (3 - 2 * v);
   breath = ((p < .42 ? sm(p / .42) : 1 - sm((p - .42) / .58)) * 2 - 1) * live.breathDepth;
 }
+
+// ---------------------------------------------------------------- tap pulse and random boosts
+// Tap: 0 -> 1 -> 0 over about 1.5 s, the same curve as the main console. The orb swells, the plates part, the
+// core, rays, bloom, dust and ribbons flare, and the dust is pushed outward.
+let tapAge = 5, pulseV = 0, openBoost = 1;
+const PULSE = { core: .7, rays: .7, hemRays: .6, bloom: .35, halo: .6, energy: .5, ribBright: .6, dustBright: .6 };
+// Random boosts: now and then one of the ticked values rises for a moment and falls back, like a breath held or a
+// thought sparking. Every: average seconds between boosts (0 = never); Length: how long one lasts; Strength: how
+// far it rises (0.8 = up to 80 % more).
+const flares = [];
+let nextFlare = 3;
+function scheduleFlare(now) { nextFlare = now + Math.max(.6, live.flareEvery * -Math.log(1 - Math.random() * .98)); }
+function addFlare(now) {
+  const keys = FLARE_TARGETS.filter(k => tune.flareOn[k]);
+  if (!keys.length) return;
+  const key = keys[(Math.random() * keys.length) | 0];
+  flares.push({ key, start: now, len: live.flareLen * (.7 + .6 * Math.random()), amp: live.flareAmount * (.6 + .4 * Math.random()) });
+}
+const boostSaved = {};
+function applyBoosts(dt) {
+  tapAge = Math.min(5, tapAge + dt);
+  pulseV = Math.min(1, tapAge / .18) * (1 - Math.min(1, Math.max(0, (tapAge - .35) / 1.15))) * live.pulse;
+  if (live.flareEvery > 0 && t >= nextFlare) { addFlare(t); scheduleFlare(t); }
+  if (live.flareEvery <= 0) nextFlare = t + 1;
+  const B = {};
+  for (const k in PULSE) B[k] = PULSE[k] * pulseV;
+  for (let i = flares.length - 1; i >= 0; i--) {
+    const f = flares[i], x = (t - f.start) / f.len;
+    if (x >= 1) { flares.splice(i, 1); continue; }
+    const sm = v => v * v * (3 - 2 * v);
+    const env = x < .25 ? sm(x / .25) : 1 - sm((x - .25) / .75);   // quick rise, slower fall
+    B[f.key] = (B[f.key] || 0) + f.amp * env;
+  }
+  openBoost = 1 + (B.open || 0) + .35 * pulseV;
+  delete B.open;
+  for (const k in B) { boostSaved[k] = live[k]; live[k] *= 1 + B[k]; }
+  return B;
+}
+function restoreBoosts(B) { for (const k in B) live[k] = boostSaved[k]; }
+
 function frame(dt) {
   t += dt;
   const ease = rate => 1 - Math.exp(-dt * rate);
   updateBreath(dt);
   for (const k in live) live[k] += (target[k] - live[k]) * ease(k === 'open' ? 1.6 : 1.3);
+  const B = applyBoosts(dt);
   for (const p of plates) { p.open += (target.open - p.open) * ease(p.lag * 1.3); placePlate(p, t); p.occ.matrix.copy(p.obj.matrix); }
 
   turn += dt * live.spin;
@@ -913,7 +969,7 @@ function frame(dt) {
   coreGroup.rotation.y = -turn * .6 + dragX;
   halo.rotation.y = turn * .3 + dragX;
   orb.position.y = .025 * Math.sin(t * .8);
-  orb.scale.setScalar(1 + .014 * breath);                     // the shell swells as she breathes in
+  orb.scale.setScalar(1 + .014 * breath + .05 * pulseV);                     // the shell swells as she breathes in
   heart.quaternion.copy(camera.quaternion);
 
   for (const u of allUniforms) {
@@ -936,7 +992,8 @@ function frame(dt) {
   renderRays();
   renderLightBuffer();
   composer.render();
+  restoreBoosts(B);
 }
 renderer.setAnimationLoop(() => frame(Math.min(clock.getDelta(), .05)));
 // for capture and testing: step the animation by hand (a hidden tab gets no animation frames)
-window.rosieOrb = { setState, debug: { bloom, bgMat, renderer, raysRT, raysMat }, step(seconds, fps = 30) { for (let i = 0; i < seconds * fps; i++) frame(1 / fps); } };
+window.rosieOrb = { setState, tap: () => { tapAge = 0; }, boost: () => addFlare(t), debug: { bloom, bgMat, renderer, raysRT, raysMat }, step(seconds, fps = 30) { for (let i = 0; i < seconds * fps; i++) frame(1 / fps); } };
