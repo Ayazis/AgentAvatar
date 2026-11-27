@@ -24,6 +24,8 @@
   select { grid-column: 1 / -1; width: 100%; background: #1c121e; color: inherit; border: 1px solid rgba(255,255,255,.12); border-radius: 6px; padding: 4px; font: inherit; }
   details summary { cursor: pointer; color: #9a8ea0; margin-top: 6px; }
   .hint { color: #7d7282; margin-top: 8px; font-size: 12px; }
+  label.check { display: flex; align-items: center; gap: 6px; margin: 2px 0 8px; }
+  label.check input { accent-color: #f08a3c; margin: 0; }
   .sliders > summary { margin: 0 0 4px; }
   .states { margin-bottom: 8px; }
 
@@ -64,6 +66,7 @@
   <label>Opening <output id="o-open"></output><input id="open" type="range" min="0" max="1.6" step=".01" value="1"></label>
   <label>Turn speed <output id="o-spin"></output><input id="spin" type="range" min="0" max="3" step=".01" value="1"></label>
   <label>Core glow <output id="o-core"></output><input id="core" type="range" min="0" max="2" step=".01" value="1"></label>
+  <label class="check"><input id="lockRays" type="checkbox" checked> Rays follow core glow</label>
   <label>Particle size <output id="o-size"></output><input id="size" type="range" min=".4" max="2.5" step=".01" value="1"></label>
   <label>Bloom <output id="o-bloom"></output><input id="bloom" type="range" min="0" max="1.6" step=".005" value="1"></label>
   <label>Rays <output id="o-rays"></output><input id="rays" type="range" min="0" max="3" step=".01" value="1"></label>
