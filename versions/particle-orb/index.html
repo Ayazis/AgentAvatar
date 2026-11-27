@@ -33,6 +33,8 @@
   .actions button { flex: 1 1 auto; padding: 5px 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,.12);
                     background: transparent; color: inherit; font: inherit; font-size: 12px; cursor: pointer; }
   .actions button:hover { border-color: #f08a3c; }
+  .ticks { display: grid; grid-template-columns: 1fr 1fr; gap: 0 8px; margin-top: 4px; }
+  .ticks label.check { margin: 3px 0; }
   .sub { margin: 10px 0 2px; color: #e9e2ea; font-size: 12px; }
   .sub span { color: #7d7282; margin-left: 4px; }
   .panel { max-height: calc(100vh - 24px); overflow: auto; }
@@ -129,6 +131,27 @@
     <label>Breathing rate <output id="o-breathRate"></output><input id="breathRate" type="range" min="0" max="3" step=".01" value="1"></label>
     <label>Breathing depth <output id="o-breathDepth"></output><input id="breathDepth" type="range" min="0" max="3" step=".01" value="1"></label>
     <div class="note">One breath takes about 5 seconds at rate 1. Depth sets how much the shell, core, dust, rays, ribbons and scarf light swell with it.</div>
+  </details>
+  <details class="group">
+    <summary>Pulse &amp; random boosts</summary>
+    <label>Tap pulse <output id="o-pulse"></output><input id="pulse" type="range" min="0" max="3" step=".01" value="1"></label>
+    <div class="note">Tap the orb (without dragging) to greet her.</div>
+    <div class="sub">Random boosts <span>a value rises for a moment</span></div>
+    <label>Every (seconds, 0 = off) <output id="o-flareEvery"></output><input id="flareEvery" type="range" min="0" max="30" step=".5" value="8"></label>
+    <label>Length (seconds) <output id="o-flareLen"></output><input id="flareLen" type="range" min=".2" max="4" step=".05" value="1"></label>
+    <label>Strength <output id="o-flareAmount"></output><input id="flareAmount" type="range" min="0" max="3" step=".01" value=".8"></label>
+    <div class="ticks">
+      <label class="check"><input type="checkbox" data-flare="bloom"> Bloom</label>
+      <label class="check"><input type="checkbox" data-flare="core"> Core glow</label>
+      <label class="check"><input type="checkbox" data-flare="rays"> Core rays</label>
+      <label class="check"><input type="checkbox" data-flare="hemRays"> Hem rays</label>
+      <label class="check"><input type="checkbox" data-flare="open"> Opening</label>
+      <label class="check"><input type="checkbox" data-flare="swirls"> Swirls</label>
+      <label class="check"><input type="checkbox" data-flare="ribBright"> Ribbons</label>
+      <label class="check"><input type="checkbox" data-flare="dustBright"> Swirl dust</label>
+      <label class="check"><input type="checkbox" data-flare="energy"> Energy</label>
+    </div>
+    <div class="actions" style="border:0; padding-top:4px"><button id="boostNow" type="button">Boost now</button></div>
   </details>
   <details class="group">
     <summary>Scarf</summary>
