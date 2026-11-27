@@ -24,7 +24,8 @@ jobs:
         if: github.event.action != 'closed'
         run: |
           mkdir -p _site
-          cp index.html rosie-avatar.html rosie-fold.html _site/
+          cp index.html _site/
+          rsync -a --exclude 'chatgpt-jacket/artwork/' versions/ _site/versions/
           cp -r src styles _site/
           rsync -a --exclude 'source/' assets/ _site/assets/
           touch _site/.nojekyll

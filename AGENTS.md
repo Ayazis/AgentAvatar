@@ -28,8 +28,7 @@ Two AI agents work on this project. Their sessions don't share memory, so the re
 - `assets/source/`: raw artwork from ChatGPT (the inputs). Add new files here, don't overwrite the built files directly.
 - `assets/`: built artwork, produced by `python tools/build_poses.py` from `assets/source/`.
 - `src/rosie/`: the avatar (animation, shaders, particles). `src/ui/`: the menus and Tune panel. `styles/`: CSS.
-- `chatgpt/`: ChatGPT's own earlier version, kept for reference.
-- `archive/`: older single-file versions. Don't edit.
+- `versions/`: every earlier or experimental version, one page each, listed in `versions/index.html`. Add new experiments here and add a line to that index.
 
 See [README.md](README.md) for the full layout and how to run it.
 

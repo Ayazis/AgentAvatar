@@ -23,8 +23,8 @@ then go to http://localhost:8765.
 | `src/ui/` | `StateBar`, `IntensitySlider`, and `tune/` (`TunePanel`, `controls`, `groups`, `storage`) |
 | `tools/build_poses.py` | Rebuilds `assets/` from `assets/source/` (`python tools/build_poses.py [scale] [centreY]`) |
 | `tools/knot/` | Blender knot animation (motion approved, look not started). See [tools/knot/README.md](tools/knot/README.md) |
-| `archive/` | The earlier single-file versions (v10, v11) |
-| `chatgpt/` | ChatGPT's version, kept for reference |
+| `versions/` | Every earlier and experimental version (jackets, procedural, three.js orbs, 2.5D orb, SVG fold). Open `versions/index.html` for the overview |
+| `tools/orb/` | Blender builds of the armillary orb (renders go to `tools/orb/out/`, not committed) |
 
 ## Using Rosie in an app
 

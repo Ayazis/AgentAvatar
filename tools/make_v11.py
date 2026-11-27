@@ -1,7 +1,7 @@
 """rosie_v10.html + pose atlas -> rosie_v11.html (Off and Idle jacket poses from ChatGPT's design, our Working lapels)."""
 import json, re, sys
 P = json.load(open(sys.argv[1]))
-h = open('rosie_v10.html', encoding='utf8').read()
+h = open("versions/jacket-v10.html", encoding='utf8').read()
 def sub(old, new, count=1):
   global h
   assert h.count(old) >= 1, old[:80]
@@ -98,5 +98,5 @@ sub("      g.uniform1f(u.silkT, this.silkT);", "      g.uniform1f(u.silkT, this.
 sub("    g.uniform2f(this.pLoc.view, aspect, scale);", "    g.uniform2f(this.pLoc.view, aspect, scale);\n    g.uniform1f(this.pLoc.pose, this.pose);")
 sub("this.textures.forEach(t => g.deleteTexture(t));", "this.textures.forEach(t => g.deleteTexture(t));")
 sub("Two denim lapels around a glowing orb", "A denim jacket that folds shut, half-opens or opens wide around a glowing orb")
-open('rosie_v11.html', 'w', encoding='utf8').write(h)
+open('versions/jacket-v11.html', 'w', encoding='utf8').write(h)
 print('ok', len(h))
