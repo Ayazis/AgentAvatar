@@ -19,15 +19,15 @@ const DIST = 1 / (Math.tan(FOV * Math.PI / 360) * 2 * ORB_R);   // camera distan
 // ---------------------------------------------------------------- states
 // Each state is a full preset: every value it has is on a slider, and the panel edits the state on screen.
 // Switching state glides every value to the other preset. Presets are saved in this browser.
-const SHARED = { size: 1, bloom: 1, rayLength: .85, rayAmount: 1, hemLength: .85, hemAmount: 1, swirlSpeed: 1, scarfLight: 1,
+const SHARED = { size: 1, bloom: 1, rayLength: .85, rayAmount: 7, hemLength: .85, hemAmount: 1, swirlSpeed: 1, scarfLight: 1,
   breathRate: 1, breathDepth: 1, pulse: 1, flareEvery: 8, flareLen: 1, flareAmount: .8, ribCount: 3, ribAmount: 1500, ribSpeed: 1, ribBright: 1, ribWidth: 1, ribOrbit: 1, dustAmount: 700, dustSpeed: 1, dustBright: 1 };
 const DEFAULTS = {
-  off:     { ...SHARED, breathDepth: .6, pulse: .6, flareEvery: 0, open: 0,   spin: .03, core: .05, rays: .02, hemRays: .45, swirls: 0,   power: .16, halo: .12, energy: 0,   lit: 0,    bloom: .7 },
-  idle:    { ...SHARED, open: .32, spin: .12, core: 1,   rays: .66, hemRays: .66, swirls: .45, power: 1,   halo: .7,  energy: .25, lit: 1 },
-  working: { ...SHARED, breathRate: 1.37, flareEvery: 4, ribSpeed: 2.6, ribWidth: 1.25, dustSpeed: 2.6, dustBright: 1.6, open: 1,   spin: .38, core: 1.55, rays: 2,  hemRays: 1.3, swirls: 1,   power: 1.1, halo: 1.15, energy: 1,  lit: 1.75 },
+  off:     { ...SHARED, breathDepth: .6, pulse: .6, flareEvery: 0, open: 0,   spin: .03, core: .05, rays: .02, hemRays: .45, swirls: 0, power: .16, halo: .12, energy: 0,   lit: 0,    bloom: .7 },
+  idle:    { ...SHARED, open: .32, spin: .12, core: 1,   rays: .66, hemRays: .66, swirls: 3, power: 1,   halo: .7,  energy: .25, lit: 1 },
+  working: { ...SHARED, breathRate: 1.37, flareEvery: 4, ribSpeed: 2.6, ribWidth: 1.25, dustSpeed: 2.6, dustBright: 1.6, open: 1,   spin: .38, core: 1.55, rays: 2,  hemRays: 1.3, swirls: 7, power: 1.1, halo: 1.15, energy: 1,  lit: 1.75 },
 };
 const KEYS = Object.keys(DEFAULTS.idle);
-const STORE = 'rosie-particle-orb-presets-v1';
+const STORE = 'rosie-particle-orb-presets-v2';   // v2: swirls and core-ray shafts are counts
 const saved = (() => { try { return JSON.parse(localStorage.getItem(STORE)) || {}; } catch { return {}; } })();
 const presets = {};
 for (const st in DEFAULTS) presets[st] = { ...DEFAULTS[st], ...(saved.presets?.[st] || {}) };
@@ -339,13 +339,13 @@ function buildCore() {
     void main(){
       vec3 p; float r, b;
       if (aMode < .5) {
-        r = aR * .5;
+        r = aR * .5 * (.55 + .3 * min(uCore, 2.5));               // the spiral grows with the glow
         float ang = aAng + uTime * (.18 + .7 * uEnergy) / (aR * 2.5 + .3);
         p = vec3(cos(ang) * r, aY, sin(ang) * r);
         b = pow(1. - aR, 1.3);
       } else {
         float life = fract(aSeed * 7.31 + uTime * (.07 + .16 * uEnergy) * (.6 + aR));
-        r = .03 + life * .52;
+        r = (.03 + life * .52) * (.55 + .3 * min(uCore, 2.5));
         float th = aAng + life * 1.4, y = aY;
         float s = sqrt(1. - y * y);
         p = vec3(cos(th) * s, y, sin(th) * s) * r;
@@ -379,8 +379,9 @@ const heartMat = new THREE.ShaderMaterial({
     varying vec2 vUv; uniform float uTime, uCore, uPower, uEnergy, uLightMul;
     void main(){
       vec2 p = vUv * 2. - 1.; float r = length(p), a = atan(p.y, p.x);
-      float hot = exp(-r * r * 400.) * 2.5;
-      float glow = exp(-r * r * 30.) * .45 + exp(-r * 6.) * .08;
+      float c = max(min(uCore, 3.), .05);                             // the heart widens as well as brightens
+      float hot = exp(-r * r * 400. / c) * 2.5;
+      float glow = exp(-r * r * 30. / c) * .45 + exp(-r * 6. / sqrt(c)) * .08;
       float rays = pow(abs(cos(a * 4. + uTime * .12)), 90.) * exp(-r * 6.) * 1.1
                  + pow(abs(cos(a * 3. - uTime * .08 + 1.)), 160.) * exp(-r * 3.8) * .55 * (.5 + uEnergy);
       vec3 col = vec3(1., .93, .8) * hot + vec3(1., .34, .05) * glow + vec3(1., .62, .28) * rays;
@@ -713,7 +714,7 @@ const rayLight = new THREE.Mesh(new THREE.PlaneGeometry(2.3, 2.3), new THREE.Sha
     varying vec2 vUv; uniform float uTime, uCore, uPower, uEnergy, uRayAmount;
     void main(){
       vec2 p = vUv * 2. - 1.; float r = length(p), a = atan(p.y, p.x);
-      float k1 = floor(2. + 5. * uRayAmount), k2 = floor(3. + 8. * uRayAmount);    // Amount: a few broad shafts .. many thin ones
+      float k1 = floor(uRayAmount + .5), k2 = floor(uRayAmount * 1.6 + .5);    // shafts: a few broad ones .. many thin ones
       float beams = .5 + .5 * sin(a * k1 + uTime * .3) * sin(a * k2 - uTime * (.2 + .4 * uEnergy) + 1.3);
       beams = .08 + pow(beams, 4.) * 1.6;                       // separate shafts, not a fog
       float light = exp(-r * r * 16.) * .35 + exp(-r * r * 2.6) * .7 * beams;
@@ -846,11 +847,35 @@ function setState(s) {
 document.querySelectorAll('.states button').forEach(b => b.onclick = () => setState(b.dataset.state));
 addEventListener('keydown', e => { const s = { 1: 'off', 2: 'idle', 3: 'working' }[e.key]; if (s) setState(s); });
 
+// ---------------------------------------------------------------- how each slider reads
+const pace = v => v < .05 ? 'still' : v < .45 ? 'very slow' : v < .8 ? 'slow' : v < 1.3 ? 'normal' : v < 2.2 ? 'fast' : 'very fast';
+const FMT = {
+  num: v => v.toFixed(2),
+  open: v => v < .01 ? 'sealed' : `${Math.round(v * 100)} % open`,
+  spin: v => `${pace(v / .12)} · ${v.toFixed(2)}`,
+  swirls: v => `${Math.round(v)} ${Math.round(v) === 1 ? 'wisp' : 'wisps'}`,
+  swirlSpeed: v => `${pace(v)} · ${v.toFixed(2)}`, ribSpeed: v => `${pace(v)} · ${v.toFixed(2)}`, dustSpeed: v => `${pace(v)} · ${v.toFixed(2)}`,
+  rayAmount: v => `${Math.round(v)} · ${v < 4 ? 'broad' : v < 9 ? 'mixed' : 'fine'}`,
+  hemAmount: v => `${Math.round(v * 100)} % of the edge`,
+  rayLength: v => `${v < .35 ? 'short' : v < .7 ? 'medium' : 'long'} · ${Math.round(v * 100)} %`,
+  hemLength: v => `${v < .35 ? 'short' : v < .7 ? 'medium' : 'long'} · ${Math.round(v * 100)} %`,
+  ribCount: v => `${Math.round(v)} ${Math.round(v) === 1 ? 'ribbon' : 'ribbons'}`,
+  ribAmount: v => `${Math.round(v)} particles`, dustAmount: v => `${Math.round(v)} particles`,
+  energy: v => `${v < .1 ? 'asleep' : v < .4 ? 'calm' : v < .8 ? 'lively' : v < 1.2 ? 'busy' : 'frantic'} · ${v.toFixed(2)}`,
+  breathRate: v => v < .02 ? 'held' : `${(5.2 / v).toFixed(1)} s per breath`,
+  flareEvery: v => v <= 0 ? 'off' : `about every ${v} s`,
+  flareLen: v => `${v.toFixed(1)} s`,
+  flareAmount: v => `up to +${Math.round(v * 100)} %`,
+  gap: v => v.toFixed(3),
+  density: v => `× ${v.toFixed(2)}`, size: v => `× ${v.toFixed(2)}`,
+  layout: v => `${v} plates`, scarfMode: v => '',
+};
+
 const sliders = {};
 for (const id of [...KEYS, ...Object.keys(tune)]) {
   const el = document.getElementById(id), out = document.getElementById('o-' + id);
   if (!el) continue;
-  const show = () => { if (out) out.textContent = (+el.value).toFixed(id === 'gap' ? 3 : +el.step >= 1 ? 0 : 2); };
+  const show = () => { if (out) out.textContent = (FMT[id] || FMT.num)(+el.value, id); };
   el.show = show; sliders[id] = el;
   el.addEventListener('input', () => {
     const v = +el.value; show();
@@ -985,7 +1010,7 @@ function frame(dt) {
   bloom.strength = .45 * Math.pow(live.bloom, 1.6) * (1 + .1 * breath);                // gentle near 1, lower ceiling
   swirlT += dt * (.25 + .75 * live.energy) * live.swirlSpeed;
   swirlUniforms.uSwirlT.value = swirlT;
-  swirlUniforms.uSwirl.value = live.swirls;
+  swirlUniforms.uSwirl.value = live.swirls / 7;                // a count of wisps, 0 .. 7
   updateExtras(dt, t);
   raysMat.uniforms.uGain.value = live.rays * (1 + .18 * breath);
   raysMat.uniforms.uHemGain.value = live.hemRays * (1 + .18 * breath);
