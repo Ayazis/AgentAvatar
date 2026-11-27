@@ -457,42 +457,34 @@ drive(CORE_K.inputs[1], 'default_value', -1, f'6*{pulse}')
 drive(CORE_NZ.inputs['W'], 'default_value', -1, 'sin(T*tau)*0.6') if 'W' in CORE_NZ.inputs else None
 if hasattr(CORE_NZ, 'noise_dimensions'): CORE_NZ.noise_dimensions = '4D'
 
-# -- shell: a truncated icosahedron of flat plates (20 hexagons, 12 pentagons). Closed, they form an orb; opening
-# pushes every plate outward along its own direction. The cap facing the camera (one pentagon and its five
-# hexagons) is left out, so the capsule is open at the front and the core shows through.
+# -- shell: five large flat steel hexagons round the core. Closed, they huddle into a rough orb around it;
+# opening pushes each plate outward along its own direction. The front stays open so the core shows.
 from mathutils import Matrix
 M_EDGEGLOW, _ = glow_mat('EdgeGlow', (1.0, 0.42, 0.1), 5)
-PHI = (1 + 5 ** 0.5) / 2
-ico = [Vector(v) for v in [(0, 1, PHI), (0, 1, -PHI), (0, -1, PHI), (0, -1, -PHI), (1, PHI, 0), (1, -PHI, 0),
-                           (-1, PHI, 0), (-1, -PHI, 0), (PHI, 0, 1), (PHI, 0, -1), (-PHI, 0, 1), (-PHI, 0, -1)]]
-turn = ico[2].normalized().rotation_difference(Vector((0, -1, 0)))   # a pentagon faces the camera (5-fold axis on Y)
-ico = [turn @ v for v in ico]
-near = lambda i, j: abs((ico[i] - ico[j]).length - 2) < 1e-4
-faces = [(i, j, k) for i in range(12) for j in range(i + 1, 12) for k in range(j + 1, 12)
-         if near(i, j) and near(j, k) and near(i, k)]
+M_PLATE = pbr_metal('PlateSteel', 'steel', (0.8, 0.78, 0.76), 0.16, 0.32, aniso=0.6, bump=0.08, scale=0.8,
+                    edge=(0.95, 0.93, 0.9))
+M_PLATE_IN = pbr_metal('PlateInset', 'steel', (0.42, 0.41, 0.4), 0.22, 0.4, aniso=0.5, bump=0.1, scale=1.2)
+M_RIVET = plain_metal('RivetSteel', (0.75, 0.73, 0.7), 0.25)
+RSH, ALPHA, RH = 1.8, math.radians(52), 1.1         # shell radius, plate tilt from the view axis, hex radius
 panels = []
-for i in range(12):                                   # pentagons round each icosahedron vertex
-    v = ico[i]; pts = [v + (ico[j] - v) / 3 for j in range(12) if j != i and near(i, j)]
-    c = sum(pts, Vector()) / 5; n = c.normalized(); u = (pts[0] - c).normalized(); w = n.cross(u)
-    pts.sort(key=lambda q: math.atan2((q - c).dot(w), (q - c).dot(u)))
-    panels.append(pts)
-for a_, b_, c_ in faces:                              # hexagons on each icosahedron face
-    A, B, C = ico[a_], ico[b_], ico[c_]
-    panels.append([A + (B - A) / 3, A + 2 * (B - A) / 3, B + (C - B) / 3, B + 2 * (C - B) / 3,
-                   C + (A - C) / 3, C + 2 * (A - C) / 3])
-RSH = 1.75                                            # closed shell radius (clears the pinion)
-scale = RSH / max(q.length for q in panels[0])
-GAP, PT = 0.93, 0.06                                  # each plate shrunk toward its centre; plate thickness
+for k in range(5):
+    th = TAU * k / 5 + math.pi / 2
+    n = Vector((math.sin(ALPHA) * math.cos(th), -math.cos(ALPHA), math.sin(ALPHA) * math.sin(th)))
+    c = n * RSH
+    u = Vector((0, -1, 0)).cross(n).normalized(); w = n.cross(u)
+    panels.append([c + RH * (math.cos(b) * u + math.sin(b) * w) for b in [TAU * i / 6 for i in range(6)]])
+scale = 1.0
+GAP, PT = 1.0, 0.08                                   # plate thickness
 
 def plate(name, pts, parent):
     """Flat sharp plate in its own frame (z = outward normal), lightly chamfered, raised gunmetal inset,
     rivets near the corners and a glowing outline on the outer face."""
-    o = mesh_obj(name, pts, [tuple(range(len(pts)))], M_BLADE, parent)
+    o = mesh_obj(name, pts, [tuple(range(len(pts)))], M_PLATE, parent)
     o.data.shade_flat(); solidify(o, PT, -1); bevel(o, 0.008, 1, angle=30)
-    ins = mesh_obj(name + '_inset', [q * 0.62 for q in pts], [tuple(range(len(pts)))], M_STEEL, o)
+    ins = mesh_obj(name + '_inset', [q * 0.62 for q in pts], [tuple(range(len(pts)))], M_PLATE_IN, o)
     ins.data.shade_flat(); ins.location = (0, 0, 0.012); solidify(ins, 0.024); bevel(ins, 0.006, 1, angle=30)
     for q in pts:
-        rivet(o, q * 0.8, (0, 0, 1), 0.022, M_BRASS)
+        rivet(o, q * 0.8, (0, 0, 1), 0.03, M_RIVET)
     cu = bpy.data.curves.new(name + '_glow', 'CURVE'); cu.dimensions = '3D'; cu.bevel_depth = 0.008
     sp = cu.splines.new('POLY'); sp.points.add(len(pts)); sp.use_cyclic_u = False
     for i, q in enumerate(pts + [pts[0]]):
@@ -502,13 +494,12 @@ def plate(name, pts, parent):
     return o
 
 shell = empty('Shell', root)
-drive(shell, 'rotation_euler', 1, f'T*tau*{S["shell"]}/5')     # 5-fold about the view axis: 1/5 turn loops seamlessly
+drive(shell, 'rotation_euler', 1, f'T*tau*{S["shell"]}/5')     # 5 identical plates: 1/5 turn loops seamlessly
 CAM = Vector((0, -1, 0))
 k = 0
 for pts in panels:
     pts = [q * scale for q in pts]
     c = sum(pts, Vector()) / len(pts); n = c.normalized()
-    if n.dot(CAM) > 0.75: continue                    # leave the front cap open
     u = (pts[0] - c).normalized(); w = n.cross(u)
     basis = Matrix((u, w, n)).transposed()
     local = [Vector(((q - c).dot(u) * GAP, (q - c).dot(w) * GAP, 0)) for q in pts]
