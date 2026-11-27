@@ -26,6 +26,13 @@
   label.check { display: flex; align-items: center; gap: 6px; margin: 2px 0 8px; }
   label.check input { accent-color: #f08a3c; margin: 0; }
   .states { margin-bottom: 8px; }
+  .editing { color: #9a8ea0; margin: -2px 0 8px; font-size: 12px; }
+  .editing b { color: #f0a868; font-weight: 600; }
+  .note { color: #7d7282; font-size: 11.5px; margin: -2px 0 6px; }
+  .actions { display: flex; flex-wrap: wrap; gap: 6px; border-top: 1px solid rgba(255,255,255,.08); padding-top: 10px; }
+  .actions button { flex: 1 1 auto; padding: 5px 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,.12);
+                    background: transparent; color: inherit; font: inherit; font-size: 12px; cursor: pointer; }
+  .actions button:hover { border-color: #f08a3c; }
   .sub { margin: 10px 0 2px; color: #e9e2ea; font-size: 12px; }
   .sub span { color: #7d7282; margin-left: 4px; }
   .panel { max-height: calc(100vh - 24px); overflow: auto; }
@@ -70,17 +77,18 @@
     <button data-state="idle" class="on">Idle</button>
     <button data-state="working">Working</button>
   </div>
+  <div class="editing">Editing the <b id="editing">Idle</b> preset</div>
   <details class="group">
     <summary>Shell</summary>
     <label>Opening <output id="o-open"></output><input id="open" type="range" min="0" max="1.6" step=".01" value="1"></label>
-    <label>Turn speed <output id="o-spin"></output><input id="spin" type="range" min="0" max="3" step=".01" value="1"></label>
+    <label>Turn speed <output id="o-spin"></output><input id="spin" type="range" min="0" max="1.2" step=".005" value=".12"></label>
     <label>Plates <select id="layout"><option value="6">6 (curved squares)</option><option value="12">12 (pentagons)</option></select></label>
     <label>Plate gap <output id="o-gap"></output><input id="gap" type="range" min=".005" max=".12" step=".005" value=".03"></label>
     <label>Density <output id="o-density"></output><input id="density" type="range" min=".3" max="2" step=".05" value="1"></label>
   </details>
   <details class="group">
     <summary>Core &amp; rays</summary>
-    <label>Core glow <output id="o-core"></output><input id="core" type="range" min="0" max="2" step=".01" value="1"></label>
+    <label>Core glow <output id="o-core"></output><input id="core" type="range" min="0" max="2.5" step=".01" value="1"></label>
     <label class="check"><input id="lockRays" type="checkbox" checked> Core rays follow core glow</label>
     <div class="sub">Core rays <span>through the gaps</span></div>
     <label>Amount <output id="o-rayAmount"></output><input id="rayAmount" type="range" min="0" max="2" step=".01" value="1"></label>
@@ -99,10 +107,24 @@
     <label>Bloom <output id="o-bloom"></output><input id="bloom" type="range" min="0" max="1.6" step=".005" value="1"></label>
   </details>
   <details class="group">
+    <summary>Mood</summary>
+    <label>Brightness <output id="o-power"></output><input id="power" type="range" min="0" max="1.6" step=".01" value="1"></label>
+    <label>Energy <output id="o-energy"></output><input id="energy" type="range" min="0" max="1.5" step=".01" value=".25"></label>
+    <div class="note">How lively it all is: core spin, sparks, dust, swirl speed, sheen and stitch light.</div>
+    <label>Dust <output id="o-halo"></output><input id="halo" type="range" min="0" max="2" step=".01" value=".7"></label>
+  </details>
+  <details class="group">
     <summary>Scarf</summary>
     <label>Scarf light <select id="scarfMode"><option value="1">Code: lit by the orb</option><option value="0">Painted: lit / bright images</option></select></label>
     <label>Scarf light strength <output id="o-scarfLight"></output><input id="scarfLight" type="range" min="0" max="2.5" step=".01" value="1"></label>
+    <label>Painted light level <output id="o-lit"></output><input id="lit" type="range" min="0" max="2" step=".01" value="1"></label>
+    <div class="note">Painted mode only: 0 unlit, 1 lit, 2 bright.</div>
   </details>
+  <div class="actions">
+    <button id="resetState" type="button">Reset this state</button>
+    <button id="resetAll" type="button">Reset all</button>
+    <button id="copySettings" type="button">Copy settings</button>
+  </div>
   <div class="hint">Keys 1 · 2 · 3 switch state. Drag to turn the orb. <a href="../index.html">All versions</a></div>
 </div>
 </body>
