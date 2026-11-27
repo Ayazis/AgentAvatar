@@ -18,14 +18,14 @@ const DIST = 1 / (Math.tan(FOV * Math.PI / 360) * 2 * ORB_R);   // camera distan
 
 // ---------------------------------------------------------------- states
 const STATES = {
-  off:     { open: 0,   power: .16, core: .05, spin: .03, energy: 0,   lit: 0,   halo: .12 },
-  idle:    { open: .32, power: 1,   core: 1,   spin: .12, energy: .25, lit: .8,  halo: .7 },
-  working: { open: 1,   power: 1.1, core: 1.55, spin: .38, energy: 1,  lit: 1,   halo: 1.15 },
+  off:     { open: 0,   power: .16, core: .05, spin: .03, energy: 0,   lit: 0,   halo: .12, swirl: 0 },
+  idle:    { open: .32, power: 1,   core: 1,   spin: .12, energy: .25, lit: 1,   halo: .7,  swirl: .45 },
+  working: { open: 1,   power: 1.1, core: 1.55, spin: .38, energy: 1,  lit: 1.75, halo: 1.15, swirl: 1 },
 };
 const live = { ...STATES.idle };
 let target = STATES.idle;
 
-const tune = { open: 1, spin: 1, core: 1, size: 1, bloom: 1, rays: 1, rayLength: .85, hemRays: 1, layout: 6, gap: .03, density: 1 };
+const tune = { open: 1, spin: 1, core: 1, size: 1, bloom: 1, rays: 1, rayLength: .85, hemRays: 1, swirls: 1, swirlSpeed: 1, layout: 6, gap: .03, density: 1 };
 
 // ---------------------------------------------------------------- renderer
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
@@ -40,24 +40,24 @@ camera.position.set(0, 0, DIST);
 // the orb is drawn alone on black and bloomed, then added over the scarf, so the scarf itself never blooms
 const composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene, camera));
-const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), .6, .35, .22);
+const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), .45, .3, .25);
 composer.addPass(bloom);
 
 // ---------------------------------------------------------------- background + scarf
 const loader = new THREE.TextureLoader();
 const tex = n => { const t = loader.load(`../../assets/base/scarf-${n}.webp`); t.colorSpace = THREE.SRGBColorSpace; return t; };
 const bgPass = new ShaderPass({
-  uniforms: { tDiffuse: { value: null }, tLit: { value: tex('lit') }, tUnlit: { value: tex('unlit') }, uLit: { value: 0 }, tRays: { value: null }, tOcc: { value: null }, uRays: { value: 1 } },
+  uniforms: { tDiffuse: { value: null }, tLit: { value: tex('lit') }, tUnlit: { value: tex('unlit') }, tBright: { value: tex('bright') }, uLit: { value: 0 }, tRays: { value: null }, tOcc: { value: null }, uRays: { value: 1 } },
   vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0., 1.); }`,
   fragmentShader: `
-    varying vec2 vUv; uniform sampler2D tDiffuse, tLit, tUnlit, tRays, tOcc; uniform float uLit, uRays;
+    varying vec2 vUv; uniform sampler2D tDiffuse, tLit, tUnlit, tBright, tRays, tOcc; uniform float uLit, uRays;
     void main(){
       vec2 p = vUv;
       float r = length((p - vec2(.5, .66)) * vec2(1.35, 1.));
       vec3 bg = mix(vec3(.016, .004, .013), vec3(.002, .001, .003), smoothstep(.05, .95, r));
-      bg += vec3(.04, .012, .006) * exp(-pow(length((p - vec2(.5, .14)) * vec2(1., 2.6)), 2.) * 3.) * uLit;   // warm floor
-      vec4 u = texture2D(tUnlit, p), l = texture2D(tLit, p);
-      vec4 s = mix(u, l, uLit);
+      bg += vec3(.04, .012, .006) * exp(-pow(length((p - vec2(.5, .14)) * vec2(1., 2.6)), 2.) * 3.) * min(uLit, 1.5);   // warm floor
+      vec4 u = texture2D(tUnlit, p), l = texture2D(tLit, p), b = texture2D(tBright, p);
+      vec4 s = uLit < 1. ? mix(u, l, uLit) : mix(l, b, smoothstep(0., 1., uLit - 1.));   // more light: lit, then bright
       gl_FragColor = vec4(mix(bg, s.rgb, s.a) + texture2D(tDiffuse, p).rgb + texture2D(tRays, p).rgb * uRays * (1. - .8 * texture2D(tOcc, p).a), 1.);
     }`,
 });
@@ -68,12 +68,13 @@ composer.addPass(new OutputPass());
 // ---------------------------------------------------------------- shared point sprite
 // A soft gaussian with a hot pinpoint centre: reads as a light, not a flat dot.
 const SPRITE_FRAG = `
+  uniform float uSize;
   varying vec3 vCol; varying float vHot;
   void main(){
     vec2 c = gl_PointCoord * 2. - 1.; float d = dot(c, c);
     if (d > 1.) discard;
     float a = exp(-d * 5.) * (1. - d) + vHot * exp(-d * 40.);
-    gl_FragColor = vec4(vCol * a, 1.);
+    gl_FragColor = vec4(vCol * a * pow(uSize, -1.7), 1.);
   }`;
 const common = () => ({
   uTime: { value: 0 }, uPower: { value: 1 }, uCore: { value: 1 }, uEnergy: { value: 0 },
@@ -432,6 +433,75 @@ function buildSparks() {
 }
 orb.add(buildSparks());
 
+// ---------------------------------------------------------------- swirls: wisps of light curling round the core
+// Each wisp is a bundle of fine strands following a looping path through and around the shell. The strands sit
+// close together at the bright head and fan out towards the tail, like smoke or a flame licking round.
+const swirlUniforms = { ...common(), uSwirl: { value: 1 }, uSwirlT: { value: 0 } };
+function buildSwirls() {
+  const STREAMS = 7, STRANDS = 9, PER = 460, rnd = mulberry32(41);
+  const a = { aT: [], aStrand: [], aSeed: [], aStream: [], aE1: [], aE2: [], aN: [], aParams: [] };
+  for (let s = 0; s < STREAMS; s++) {
+    const n = new V3(rnd() * 2 - 1, rnd() * 2 - 1, rnd() * 2 - 1).normalize();
+    const e1 = new V3(rnd() - .5, rnd() - .5, rnd() - .5).cross(n).normalize(), e2 = new V3().crossVectors(n, e1);
+    const warm = s % 3 !== 2 ? 1 : 0;                 // two warm wisps for every cool one
+    const params = [rnd() * 6.28, .7 + rnd() * .6, warm, rnd()];   // phase, speed, warm, shape
+    for (let k = 0; k < STRANDS; k++) for (let i = 0; i < PER; i++) {
+      a.aT.push(Math.pow(i / PER, 1.25) + rnd() * .004);
+      a.aStrand.push((k - (STRANDS - 1) / 2) / STRANDS + (rnd() - .5) * .05);
+      a.aSeed.push(rnd()); a.aStream.push(s / STREAMS);
+      a.aE1.push(e1.x, e1.y, e1.z); a.aE2.push(e2.x, e2.y, e2.z); a.aN.push(n.x, n.y, n.z);
+      a.aParams.push(...params);
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  const count = a.aT.length;
+  g.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(count * 3), 3));
+  for (const k of ['aT', 'aStrand', 'aSeed', 'aStream']) g.setAttribute(k, new THREE.Float32BufferAttribute(a[k], 1));
+  for (const k of ['aE1', 'aE2', 'aN']) g.setAttribute(k, new THREE.Float32BufferAttribute(a[k], 3));
+  g.setAttribute('aParams', new THREE.Float32BufferAttribute(a.aParams, 4));
+  const obj = new THREE.Points(g, pointsMat(swirlUniforms, `
+    attribute float aT, aStrand, aSeed, aStream; attribute vec3 aE1, aE2, aN; attribute vec4 aParams;
+    uniform float uTime, uPower, uEnergy, uSize, uPx, uDist, uSwirl, uSwirlT;
+    varying vec3 vCol; varying float vHot;
+    vec3 path(float u, float shape){
+      float r = mix(.36, 1.34, .5 + .5 * sin(u * .63 + shape * 6.28));     // dips inside the shell and back out
+      float h = .38 * sin(u * 1.37 + shape * 9.) + .12 * sin(u * 3.1);
+      return (aE1 * cos(u) + aE2 * sin(u)) * r + aN * h;
+    }
+    void main(){
+      float T = clamp(aT, 0., 1.);                                         // pow() of a negative is NaN, and bloom spreads NaN
+      float head = uSwirlT * aParams.y + aParams.x;
+      float len = 3.2 + 1.6 * aParams.w;                                   // radians of trail behind the head
+      float u = head - T * len;
+      vec3 p = path(u, aParams.w);
+      vec3 tang = normalize(path(u + .01, aParams.w) - p);
+      vec3 side = normalize(cross(tang, normalize(p) + aN * .3) + vec3(1e-4));
+      vec3 lift = cross(side, tang);
+      float spread = .02 + .3 * pow(T, 1.4);                                 // tight at the head, fanning out at the tail
+      float curl = sin(u * 5. + aStrand * 14. + uTime * 1.3) * .5 + .5;
+      p += side * aStrand * spread * 2. + lift * (curl - .5) * spread * 1.2;
+      p += (vec3(fract(aSeed * 71.3), fract(aSeed * 13.7), fract(aSeed * 37.1)) - .5) * spread * .35;
+      float b = pow(1. - T, 1.3) * smoothstep(0., .03, T + .01);
+      float on = smoothstep(aStream - .08, aStream + .02, uSwirl);        // wisps come in one by one as uSwirl grows
+      float tw = .75 + .25 * sin(uTime * (2. + aSeed * 6.) + aSeed * 40.);
+      vec3 warm = mix(vec3(2.2, 1.3, .55), vec3(1.4, .32, .04), smoothstep(0., .5, T));
+      vec3 cool = mix(vec3(.9, 1.6, 2.2), vec3(.12, .5, 1.5), smoothstep(0., .5, T));
+      vec3 col = (aParams.z > .5 ? warm : cool) * b * tw * on * uPower * .6;
+      vec4 mv = modelViewMatrix * vec4(p, 1.);
+      float near = clamp(.5 - (-mv.z - uDist) * .5, 0., 1.);
+      col *= mix(.45, 1., near);
+      gl_Position = projectionMatrix * mv;
+      gl_PointSize = (1.3 + 1.5 * (1. - T)) * uSize * uPx * (uDist / -mv.z);
+      vHot = b * .8;
+      vCol = col;
+    }`));
+  obj.frustumCulled = false;
+  return obj;
+}
+const swirls = new THREE.Group();
+swirls.add(buildSwirls());
+orb.add(swirls);
+
 // ---------------------------------------------------------------- light shafts
 // The core's light is drawn into a small mask, with the front plates as black silhouettes over it and their hems
 // as thin bright lines. Smearing that mask outward from the core gives shafts that only escape through the gaps
@@ -514,7 +584,7 @@ function renderRays() {
   camera.layers.set(0);
 }
 
-const allUniforms = [plateUniforms, coreUniforms, haloUniforms, sparkUniforms, rayUniforms];
+const allUniforms = [plateUniforms, coreUniforms, haloUniforms, sparkUniforms, rayUniforms, swirlUniforms];
 
 // ---------------------------------------------------------------- sizing
 function resize() {
@@ -550,7 +620,7 @@ function setState(s) {
 document.querySelectorAll('.states button').forEach(b => b.onclick = () => setState(b.dataset.state));
 addEventListener('keydown', e => { const s = { 1: 'off', 2: 'idle', 3: 'working' }[e.key]; if (s) setState(s); });
 
-for (const id of ['open', 'spin', 'core', 'size', 'bloom', 'rays', 'rayLength', 'hemRays', 'gap', 'density', 'layout']) {
+for (const id of ['open', 'spin', 'core', 'size', 'bloom', 'rays', 'rayLength', 'hemRays', 'swirls', 'swirlSpeed', 'gap', 'density', 'layout']) {
   const el = document.getElementById(id), out = document.getElementById('o-' + id);
   const show = () => { if (out) out.textContent = (+el.value).toFixed(id === 'gap' ? 3 : 2); };
   el.value = tune[id]; show();
@@ -564,7 +634,7 @@ for (const id of ['open', 'spin', 'core', 'size', 'bloom', 'rays', 'rayLength', 
 buildShell();
 resize();
 const clock = new THREE.Clock();
-let t = 0, turn = 0;
+let t = 0, turn = 0, swirlT = 0;
 function frame(dt) {
   t += dt;
   const ease = rate => 1 - Math.exp(-dt * rate);
@@ -584,9 +654,12 @@ function frame(dt) {
     u.uEnergy.value = live.energy; u.uSize.value = tune.size; u.uHalo.value = live.halo;
   }
   const flick = .96 + .04 * Math.sin(t * 6.7) * Math.sin(t * 2.3 + 1);
-  bgMat.uniforms.uLit.value = Math.min(1, live.lit * Math.min(1, tune.core)) * flick;
-  bloom.strength = .6 * tune.bloom * (.5 + .5 * live.power);
+  bgMat.uniforms.uLit.value = Math.min(2, live.lit * tune.core) * flick;
+  bloom.strength = .45 * Math.pow(tune.bloom, 1.6) * (.5 + .5 * live.power);   // gentle near 1, lower ceiling
   rayUniforms.uHemRays.value = tune.hemRays;
+  swirlT += dt * (.25 + .75 * live.energy) * tune.swirlSpeed;
+  swirlUniforms.uSwirlT.value = swirlT;
+  swirlUniforms.uSwirl.value = live.swirl * tune.swirls;
   raysMat.uniforms.uGain.value = tune.rays * (.45 + .85 * live.energy);   // faint when idle, full when working
   renderRays();
   composer.render();
