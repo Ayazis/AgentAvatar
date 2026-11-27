@@ -677,10 +677,23 @@ for (const id of ['open', 'spin', 'core', 'size', 'bloom', 'rays', 'rayLength', 
   const el = document.getElementById(id), out = document.getElementById('o-' + id);
   const show = () => { if (out) out.textContent = (+el.value).toFixed(id === 'gap' ? 3 : 2); };
   el.value = tune[id]; show();
+  el.show = show;
   el.addEventListener('input', () => {
     tune[id] = +el.value; show();
     if (id === 'gap' || id === 'density' || id === 'layout') { clearTimeout(el.t); el.t = setTimeout(buildShell, 120); }
+    if (lockRays.checked && (id === 'core' || id === 'rays')) linkRays(id);
   });
+}
+
+// The core's light is what makes the rays, so by default the two sliders move together, keeping the ratio they
+// had when the lock was switched on. Unlocked, each works alone (the rays then ignore the Core glow slider).
+const lockRays = document.getElementById('lockRays');
+let rayRatio = tune.rays / Math.max(tune.core, .01);
+lockRays.addEventListener('change', () => { rayRatio = tune.rays / Math.max(tune.core, .01); });
+function linkRays(changed) {
+  const core = document.getElementById('core'), rays = document.getElementById('rays');
+  if (changed === 'core') { tune.rays = Math.min(+rays.max, tune.core * rayRatio); rays.value = tune.rays; rays.show(); }
+  else { tune.core = Math.min(+core.max, tune.rays / Math.max(rayRatio, .01)); core.value = tune.core; core.show(); }
 }
 
 // ---------------------------------------------------------------- frame loop
@@ -706,6 +719,7 @@ function frame(dt) {
     u.uTime.value = t; u.uPower.value = live.power; u.uCore.value = live.core * tune.core;
     u.uEnergy.value = live.energy; u.uSize.value = tune.size; u.uHalo.value = live.halo;
   }
+  rayUniforms.uCore.value = live.core;                         // the Rays slider alone sets how strong the shafts are
   const flick = .96 + .04 * Math.sin(t * 6.7) * Math.sin(t * 2.3 + 1);
   bgMat.uniforms.uLit.value = Math.min(2, live.lit * tune.core) * flick;
   bgMat.uniforms.uLightGain.value = 1.1 * tune.scarfLight;
