@@ -1,4 +1,4 @@
-# Blender scene: the clockwork orb from ChatGPT's parts (assets/source/orb-parts/), built as real geometry so
+# Blender scene: the clockwork orb from ChatGPT's parts, built as real geometry so
 # perspective and lighting are correct: shell blades, a two-ring gimbal, a spoked gear + pinion, a bearing housing
 # and an amber core. Materials use ChatGPT's PBR maps in assets/source/orb-materials/.
 # Run:  blender -b -P tools/orb/build_mech_orb.py -- [--state idle|thinking|talking|off] [--frames N] [--res PX]
@@ -268,102 +268,208 @@ drive(root, 'rotation_euler', 2, '0.05*sin(T*tau)')
 mech = empty('Mech', root, rot=(math.radians(68), 0, math.radians(-24)))
 drive(mech, 'rotation_euler', 0, f'{math.radians(68)}+0.04*sin(T*tau+1)')
 
-# Proportions below are measured from ChatGPT's face-on parts (assets/orb-parts/*-face.png, gear-large.png):
-# each part is described as fractions of its own outer radius, so it keeps the art's weight at any size.
+# Parts are built from ChatGPT's v2 face textures (assets/source/orb-faces/v2/): each face's alpha is traced into
+# a solid of real thickness; its base color, height (bump) and roughness go on the front and back, and its
+# outer-edge strip wraps the sides. Face PNGs are 2048 square with the part's outer diameter at 90% of the width.
+FACES = os.path.join(ROOT, 'assets', 'source', 'orb-faces', 'v2')
 
-# -- large spoked gear behind the bearing: 36 teeth, heavy rim, 7 broad spokes, bolted hub
-RG = 0.98
-gearL = empty('GearL', mech, loc=(0, 0, -0.2))
-drive(gearL, 'rotation_euler', 2, f'-T*tau*{S["gear"]}')
-gear_disc('gear_rim', 0.85 * RG, RG, 36, 0.62 * RG, 0.1 * RG, M_BRONZE, gearL)   # rim .62-.85, teeth .85-1
-hub = lathe('gear_hub', [(0.09, -0.07), (0.25 * RG, -0.07), (0.25 * RG, 0.06), (0.2 * RG, 0.1), (0.09, 0.1)],
-            M_BRONZE, gearL); bevel(hub, 0.015, 3)
-lathe('gear_bore', box_profile(0.0, 0.09, -0.071, 0.101), M_HOLE, gearL)
-def spoke(parent, a):
-    """Tapered spoke from hub to rim, wide like the art's (windows between them are smaller than the spokes)."""
-    r0, r1, w0, w1, d = 0.22 * RG, 0.66 * RG, 0.15 * RG, 0.2 * RG, 0.08 * RG
-    vs = [(r0, -w0 / 2, -d / 2), (r1, -w1 / 2, -d / 2), (r1, w1 / 2, -d / 2), (r0, w0 / 2, -d / 2),
-          (r0, -w0 / 2, d / 2), (r1, -w1 / 2, d / 2), (r1, w1 / 2, d / 2), (r0, w0 / 2, d / 2)]
-    fs = [(0, 3, 2, 1), (4, 5, 6, 7), (0, 1, 5, 4), (1, 2, 6, 5), (2, 3, 7, 6), (3, 0, 4, 7)]
-    o = mesh_obj('spoke', vs, fs, M_BRONZE, parent); o.rotation_euler = (0, 0, a); bevel(o, 0.02, 3)
-for k in range(7):
-    a = TAU * k / 7
-    spoke(gearL, a)
-    rivet(gearL, (0.17 * RG * math.cos(a + TAU / 14), 0.17 * RG * math.sin(a + TAU / 14), 0.1), (0, 0, 1), 0.022, M_BRASS)
-    rivet(gearL, (0.735 * RG * math.cos(a), 0.735 * RG * math.sin(a), 0.05 * RG), (0, 0, 1), 0.026, M_BRASS)
+def face_img(stem, non_color=False):
+    im = bpy.data.images.load(os.path.join(FACES, stem + '.png'), check_existing=True)
+    if non_color: im.colorspace_settings.name = 'Non-Color'
+    return im
 
-# -- pinion: 12 blocky teeth, thick body, stepped hub and a deep bore (turns 3x as fast, so the loop closes)
-RP = 0.27
-pa = math.radians(-35)
-pin = empty('Pinion', mech, loc=(1.15 * math.cos(pa), 1.15 * math.sin(pa), -0.2))
-drive(pin, 'rotation_euler', 2, f'T*tau*{S["gear"] * 3}+{TAU / 24}')
-gear_disc('pinion_teeth', 0.78 * RP, RP, 12, 0.3 * RP, 0.5 * RP, M_STEEL, pin, blocky=True)
-ph = lathe('pinion_hub', [(0.3 * RP, -0.3 * RP), (0.64 * RP, -0.3 * RP), (0.64 * RP, 0.3 * RP), (0.58 * RP, 0.34 * RP),
-                          (0.48 * RP, 0.34 * RP), (0.46 * RP, 0.42 * RP), (0.36 * RP, 0.44 * RP), (0.3 * RP, 0.42 * RP)],
-           M_STEEL, pin); bevel(ph, 0.008, 2)
-lathe('pinion_bore', box_profile(0.0, 0.3 * RP, -0.31 * RP, 0.43 * RP), M_HOLE, pin)
+def concentric_brush(nt, scale):
+    """Fine concentric lines (brushing that follows the circle), as a 0..1 value."""
+    tc = nt.nodes.new('ShaderNodeTexCoord')
+    sep = nt.nodes.new('ShaderNodeSeparateXYZ'); nt.links.new(tc.outputs['Object'], sep.inputs[0])
+    cmb = nt.nodes.new('ShaderNodeCombineXYZ')
+    ln = nt.nodes.new('ShaderNodeVectorMath'); ln.operation = 'LENGTH'
+    xy = nt.nodes.new('ShaderNodeCombineXYZ')
+    nt.links.new(sep.outputs['X'], xy.inputs['X']); nt.links.new(sep.outputs['Y'], xy.inputs['Y'])
+    nt.links.new(xy.outputs[0], ln.inputs[0])
+    nz = nt.nodes.new('ShaderNodeTexNoise'); nz.inputs['Scale'].default_value = 1.0; nz.inputs['Detail'].default_value = 4
+    mul = nt.nodes.new('ShaderNodeMath'); mul.operation = 'MULTIPLY'; mul.inputs[1].default_value = scale
+    nt.links.new(ln.outputs['Value'], mul.inputs[0])
+    nt.links.new(mul.outputs[0], cmb.inputs['X'])
+    ang = nt.nodes.new('ShaderNodeMath'); ang.operation = 'ARCTAN2'
+    nt.links.new(sep.outputs['Y'], ang.inputs[0]); nt.links.new(sep.outputs['X'], ang.inputs[1])
+    am = nt.nodes.new('ShaderNodeMath'); am.operation = 'MULTIPLY'; am.inputs[1].default_value = 0.6
+    nt.links.new(ang.outputs[0], am.inputs[0]); nt.links.new(am.outputs[0], cmb.inputs['Y'])
+    nt.links.new(cmb.outputs[0], nz.inputs['Vector'])
+    return nz.outputs['Fac']
 
-# -- bearing housing with the core in its bore: chunky, solid metal from .33 to .95 of its radius
-RB = 0.62
-bear = empty('Bearing', mech)
-race = lathe('bear_race', [(0.33 * RB, -0.07), (0.45 * RB, -0.07), (0.45 * RB, 0.15), (0.42 * RB, 0.18),
-                           (0.36 * RB, 0.18), (0.33 * RB, 0.15)], M_BRASS, bear); bevel(race, 0.012, 3)
-lathe('bear_glow', box_profile(0.32 * RB, 0.335 * RB, -0.05, 0.16), M_RACE, bear)
-plate = lathe('bear_plate', [(0.45 * RB, -0.07), (0.6 * RB, -0.07), (0.6 * RB, 0.1), (0.57 * RB, 0.12),
-                             (0.45 * RB, 0.12)], M_BRONZE, bear); bevel(plate, 0.012, 3)
-lathe('bear_slot', box_profile(0.6 * RB, 0.72 * RB, -0.07, 0.02), M_DARK, bear)        # recessed slotted band
-for k in range(6):                                                                      # bridges across the slot
-    a = TAU * k / 6 + TAU / 12
-    br = box('bridge', (0.13 * RB, 0.07, 0.07), M_BRONZE, bear)
-    br.location = (0.66 * RB * math.cos(a), 0.66 * RB * math.sin(a), 0.0); br.rotation_euler = (0, 0, a); bevel(br, 0.01, 2)
-outer = lathe('bear_outer', [(0.72 * RB, -0.09), (0.95 * RB, -0.09), (0.95 * RB, 0.06), (0.9 * RB, 0.13),
-                             (0.72 * RB, 0.13)], M_BRONZE, bear); bevel(outer, 0.015, 3)
-for k in range(3):                                                                      # three bolt lugs
-    a = TAU * k / 3 + math.pi / 2
-    lug = lathe('lug', [(0.0, -0.09), (0.15 * RB, -0.09), (0.15 * RB, 0.1), (0.12 * RB, 0.14), (0.0, 0.14)], M_BRONZE,
-                bear, segs=48, loc=(0.92 * RB * math.cos(a), 0.92 * RB * math.sin(a), 0)); bevel(lug, 0.012, 3)
-    rivet(bear, (0.92 * RB * math.cos(a), 0.92 * RB * math.sin(a), 0.14), (0, 0, 1), 0.04, M_BRASS)
-for k in range(16):
-    a = TAU * (k + 0.5) / 16
-    rivet(bear, (0.835 * RB * math.cos(a), 0.835 * RB * math.sin(a), 0.13), (0, 0, 1), 0.022, M_BRASS)
-for k in range(12):
-    a = TAU * k / 12
-    rivet(bear, (0.52 * RB * math.cos(a), 0.52 * RB * math.sin(a), 0.12), (0, 0, 1), 0.017, M_BRASS)
+def face_mat(name, stem, relief, tint_to=None, tint_k=0.0, brush=0.15, rough_lo=0.12, rough_hi=0.6):
+    """Metal from one ChatGPT face: base color, roughness and height through the mesh's planar UVs.
+    Circular anisotropy and fine concentric bump give it real brushed highlights under Blender's lights."""
+    m, nt, out = node_mat(name)
+    b = nt.nodes.new('ShaderNodeBsdfPrincipled')
+    b.inputs['Metallic'].default_value = 1.0
+    b.inputs['Anisotropic'].default_value = 0.55
+    tg = nt.nodes.new('ShaderNodeTangent'); tg.direction_type = 'RADIAL'; tg.axis = 'Z'
+    nt.links.new(tg.outputs[0], b.inputs['Tangent'])
+    uv = nt.nodes.new('ShaderNodeUVMap')
+    col = nt.nodes.new('ShaderNodeTexImage'); col.image = face_img(stem + '-basecolor')
+    rgh = nt.nodes.new('ShaderNodeTexImage'); rgh.image = face_img(stem + '-roughness', True)
+    hgt = nt.nodes.new('ShaderNodeTexImage'); hgt.image = face_img(stem + '-height', True)
+    for t in (col, rgh, hgt):
+        t.extension = 'EXTEND'; nt.links.new(uv.outputs['UV'], t.inputs['Vector'])
+    color = col.outputs['Color']
+    if tint_to:
+        mx = nt.nodes.new('ShaderNodeMix'); mx.data_type = 'RGBA'; mx.inputs['Factor'].default_value = tint_k
+        mx.inputs['B'].default_value = (*tint_to, 1); nt.links.new(color, mx.inputs['A']); color = mx.outputs['Result']
+    nt.links.new(color, b.inputs['Base Color'])
+    rr = nt.nodes.new('ShaderNodeMapRange')
+    rr.inputs['To Min'].default_value = rough_lo; rr.inputs['To Max'].default_value = rough_hi
+    nt.links.new(rgh.outputs['Color'], rr.inputs['Value']); nt.links.new(rr.outputs['Result'], b.inputs['Roughness'])
+    bp = nt.nodes.new('ShaderNodeBump'); bp.inputs['Distance'].default_value = relief
+    nt.links.new(hgt.outputs['Color'], bp.inputs['Height'])
+    bp2 = nt.nodes.new('ShaderNodeBump'); bp2.inputs['Strength'].default_value = brush; bp2.inputs['Distance'].default_value = 0.002
+    nt.links.new(concentric_brush(nt, 900), bp2.inputs['Height']); nt.links.new(bp.outputs['Normal'], bp2.inputs['Normal'])
+    nt.links.new(bp2.outputs['Normal'], b.inputs['Normal'])
+    nt.links.new(b.outputs[0], out.inputs[0])
+    return m
 
-# -- core: glowing amber dome sitting in the bearing's bore, with a light inside
+def edge_mat(name, stem, tint_to=None, tint_k=0.0):
+    """Side walls: ChatGPT's outer-edge strip, U once round the part, V across the thickness."""
+    m, nt, out = node_mat(name)
+    b = nt.nodes.new('ShaderNodeBsdfPrincipled')
+    b.inputs['Metallic'].default_value = 1.0; b.inputs['Roughness'].default_value = 0.28
+    b.inputs['Anisotropic'].default_value = 0.6
+    tg = nt.nodes.new('ShaderNodeTangent'); tg.direction_type = 'RADIAL'; tg.axis = 'Z'
+    nt.links.new(tg.outputs[0], b.inputs['Tangent'])
+    uv = nt.nodes.new('ShaderNodeUVMap')
+    col = nt.nodes.new('ShaderNodeTexImage'); col.image = face_img(stem + '-outer-edge-basecolor'); col.extension = 'REPEAT'
+    nt.links.new(uv.outputs['UV'], col.inputs['Vector'])
+    color = col.outputs['Color']
+    if tint_to:
+        mx = nt.nodes.new('ShaderNodeMix'); mx.data_type = 'RGBA'; mx.inputs['Factor'].default_value = tint_k
+        mx.inputs['B'].default_value = (*tint_to, 1); nt.links.new(color, mx.inputs['A']); color = mx.outputs['Result']
+    nt.links.new(color, b.inputs['Base Color'])
+    nt.links.new(b.outputs[0], out.inputs[0])
+    return m
+
+def face_part(name, stem, diameter, thick, parent, back_stem=None, relief=0.02, N=512, loc=(0, 0, 0), **look):
+    """Trace the face's alpha (at the 0.5 iso line) into a flat mesh, then give it a back and side walls.
+    Front faces +Z (material 0), back faces at z = -thick (material 1), sides (material 2)."""
+    import numpy as np
+    img = face_img(stem + '-basecolor')
+    W, H = img.size
+    px = np.empty(W * H * 4, np.float32); img.pixels.foreach_get(px)
+    alpha = px.reshape(H, W, 4)[..., 3]                    # rows run bottom to top in Blender
+    s_ = W // N
+    cells = alpha[:N * s_, :N * s_].reshape(N, s_, N, s_).mean((1, 3))
+    keep = cells > 0.5
+    pad = np.pad(cells, 1)
+    C = (pad[:-1, :-1] + pad[1:, :-1] + pad[:-1, 1:] + pad[1:, 1:]) / 4       # value at each cell corner
+    gy, gx = np.gradient(C)
+    # outline = directed cell edges between kept and empty cells, counter-clockwise around the solid
+    kp = np.pad(keep, 1); M = N + 1
+    ii, jj = np.nonzero(keep)
+    c = lambda i, j: i * M + j
+    sides = [(~kp[ii, jj + 1], c(ii, jj), c(ii, jj + 1)),              # below empty: bottom edge, left to right
+             (~kp[ii + 1, jj + 2], c(ii, jj + 1), c(ii + 1, jj + 1)),  # right empty
+             (~kp[ii + 2, jj + 1], c(ii + 1, jj + 1), c(ii + 1, jj)),  # above empty
+             (~kp[ii + 1, jj], c(ii + 1, jj), c(ii, jj))]               # left empty
+    ea = np.concatenate([s0[m] for m, s0, s1 in sides]); eb = np.concatenate([s1[m] for m, s0, s1 in sides])
+    corners, inv = np.unique(np.r_[ea, eb], return_inverse=True)
+    ea, eb = inv[:len(ea)], inv[len(ea):]
+    ci, cj = corners // M, corners % M
+    # slide each outline corner onto the 0.5 iso line of the alpha, then smooth along the outline
+    g2 = gx[ci, cj] ** 2 + gy[ci, cj] ** 2 + 1e-9
+    k = (0.5 - C[ci, cj]) / g2
+    dx, dy = k * gx[ci, cj], k * gy[ci, cj]
+    n = np.hypot(dx, dy); f_ = np.minimum(1, 0.7 / np.maximum(n, 1e-9))
+    P = np.stack([cj + dx * f_, ci + dy * f_], 1)
+    nxt = np.arange(len(P)); prv = np.arange(len(P)); nxt[ea] = eb; prv[eb] = ea
+    for _ in range(3):
+        P = 0.5 * P + 0.25 * (P[nxt] + P[prv])
+    canvas = diameter / 0.9
+    verts = [((x / N - 0.5) * canvas, (y / N - 0.5) * canvas, 0.0) for x, y in P]
+    me = bpy.data.meshes.new(name)
+    bm = bmesh.new()
+    bv = [bm.verts.new(v) for v in verts]
+    for a_, b_ in zip(ea, eb):
+        if a_ != b_: bm.edges.new((bv[a_], bv[b_]))
+    bmesh.ops.triangle_fill(bm, use_beauty=True, use_dissolve=False, edges=bm.edges[:])
+    for f in bm.faces:
+        if f.normal.z < 0: f.normal_flip()
+    bm.faces.ensure_lookup_table()
+    front = bm.faces[:]
+    rim = []
+    for f in front:
+        for l in f.loops:
+            if len(l.edge.link_faces) == 1: rim.append((l.vert, l.link_loop_next.vert))
+    back = {v: bm.verts.new((v.co.x, v.co.y, -thick)) for v in bm.verts[:]}
+    for f in front:
+        nf = bm.faces.new([back[v] for v in reversed(f.verts)]); nf.material_index = 1
+    for a_, b_ in rim:
+        sf = bm.faces.new((b_, a_, back[a_], back[b_])); sf.material_index = 2
+    uvl = bm.loops.layers.uv.new('UV')
+    for f in bm.faces:
+        if f.material_index < 2:
+            for l in f.loops:
+                l[uvl].uv = (l.vert.co.x / canvas + 0.5, l.vert.co.y / canvas + 0.5)
+        else:
+            us = [(math.atan2(l.vert.co.y, l.vert.co.x) / TAU) % 1.0 for l in f.loops]
+            if max(us) - min(us) > 0.5: us = [u + 1 if u < 0.5 else u for u in us]
+            for l, u in zip(f.loops, us):
+                l[uvl].uv = (u, (l.vert.co.z + thick) / thick)
+    bm.to_mesh(me); bm.free()
+    me.shade_smooth()
+    if hasattr(me, 'set_sharp_from_angle'): me.set_sharp_from_angle(angle=math.radians(35))
+    me.materials.append(face_mat(name + '_front', stem, relief, **look))
+    me.materials.append(face_mat(name + '_back', back_stem or stem, relief, **look))
+    me.materials.append(edge_mat(name + '_edge', stem.replace('-front', ''), look.get('tint_to'), look.get('tint_k', 0.0)))
+    o = link(bpy.data.objects.new(name, me), parent); o.location = loc
+    bevel(o, min(0.012, thick * 0.12), 2, angle=40)
+    return o
+
+# -- large gear behind the bearing: 40 teeth (one at 0°, every 9°), 7 spokes
+RG = 0.84
+gearL = empty('GearL', mech, loc=(0, 0, -0.16))
+GEAR_PHASE = math.radians(5.5)            # puts a tooth gap toward the pinion at -35°
+drive(gearL, 'rotation_euler', 2, f'{GEAR_PHASE}-T*tau*{S["gear"]}')
+face_part('gear', 'large-gear-front', 2 * RG, 0.08, gearL, relief=0.02)
+
+# -- pinion: 12 teeth (one at 0°, every 30°); pitch radii in the 40:12 ratio so the teeth really mesh
+RP = RG * 0.944 * 12 / 40 / 0.8945
+PA = math.radians(-35)
+DIST = 0.944 * RG + 0.8945 * RP
+pin = empty('Pinion', mech, loc=(DIST * math.cos(PA), DIST * math.sin(PA), -0.16))
+drive(pin, 'rotation_euler', 2, f'{math.radians(25)}+T*tau*{S["gear"]}*40/12')
+face_part('pinion', 'steel-pinion-front', 2 * RP, 0.16, pin, relief=0.025, tint_to=(0.34, 0.32, 0.3), tint_k=0.35)
+
+# -- bearing housing, the core sits in its bore (bore = 30% of its radius)
+RB = 0.56
+bear = empty('Bearing', mech, loc=(0, 0, 0.1))
+face_part('bearing', 'bronze-bearing-front', 2 * RB, 0.18, bear, back_stem='bronze-bearing-back', relief=0.03)
+
+# -- core: glowing amber dome in the bearing's bore, with a light inside
 core = empty('Core', mech, loc=(0, 0, 0.06))
-bm = bmesh.new(); bmesh.ops.create_uvsphere(bm, u_segments=48, v_segments=24, radius=0.2)
+bm = bmesh.new(); bmesh.ops.create_uvsphere(bm, u_segments=48, v_segments=24, radius=0.3 * RB * 0.97)
 me = bpy.data.meshes.new('core'); bm.to_mesh(me); bm.free(); me.shade_smooth(); me.materials.append(M_CORE)
 link(bpy.data.objects.new('core', me), core)
-L = bpy.data.lights.new('coreLight', 'POINT'); L.color = (1.0, 0.5, 0.15); L.shadow_soft_size = 0.18
-link(bpy.data.objects.new('coreLight', L), core).location = (0, 0, 0.3)
+L = bpy.data.lights.new('coreLight', 'POINT'); L.color = (1.0, 0.5, 0.15); L.shadow_soft_size = 0.15
+link(bpy.data.objects.new('coreLight', L), core).location = (0, 0, 0.35)
 pulse = f'({S["glow"]}*(1+{S["glow_p"]}*sin(T*tau*{S["beats"]})))'
 drive(L, 'energy', -1, f'45*{pulse}')
 drive(CORE_K.inputs[1], 'default_value', -1, f'6*{pulse}')
-drive(E_RACE.inputs['Strength'], 'default_value', -1, f'2.5*{pulse}')
 drive(CORE_NZ.inputs['W'], 'default_value', -1, 'sin(T*tau)*0.6') if 'W' in CORE_NZ.inputs else None
 if hasattr(CORE_NZ, 'noise_dimensions'): CORE_NZ.noise_dimensions = '4D'
 
-# -- gimbal: two heavy washers (band = 20% of radius, as in the art), big enough to clear the pinion
+# -- gimbal: bronze ring swings inside the steel ring; inner edges are 76% / 75% of their radius
 gim = empty('Gimbal', root, rot=(math.radians(20), math.radians(-15), math.radians(10)))
 outerG = empty('OuterG', gim)
 drive(outerG, 'rotation_euler', 0, f'1.05+{0.45 * S["gimbal"]}*sin(T*tau)')
-R1 = 2.2; W1, T1 = 0.2 * R1, 0.07 * R1                 # steel: outer radius, radial band, thickness
-ring1 = lathe('ring_steel', box_profile(R1 - W1, R1, -T1 / 2, T1 / 2), M_STEEL, outerG, segs=192)
-bevel(ring1, 0.025, 4)
-for k in range(16):
-    a = TAU * (k + 0.5) / 16
-    for zs in (1, -1):
-        hole(outerG, ((R1 - W1 / 2) * math.cos(a), (R1 - W1 / 2) * math.sin(a), zs * T1 / 2), (0, 0, zs), 0.045, 0.02)
+R2 = 1.74                                   # bronze: inner 1.32, clears the pinion (reach ~1.3)
+R1 = 2.42                                   # steel: inner 1.81, clears the bronze ring
 innerG = empty('InnerG', outerG)
 drive(innerG, 'rotation_euler', 1, f'0.7+{0.6 * S["gimbal"]}*sin(T*tau*2+0.8)')
-R2 = 1.74; W2, T2 = 0.2 * R2, 0.07 * R2                # bronze, riveted on both faces
-ring2 = lathe('ring_bronze', box_profile(R2 - W2, R2, -T2 / 2, T2 / 2), M_BRONZE, innerG, segs=192)
-bevel(ring2, 0.025, 4)
-for k in range(14):
-    a = TAU * k / 14
-    for zs in (1, -1):
-        rivet(innerG, ((R2 - W2 / 2) * math.cos(a), (R2 - W2 / 2) * math.sin(a), zs * T2 / 2), (0, 0, zs), 0.045, M_BRASS)
+face_part('ring_bronze', 'bronze-ring-front', 2 * R2, 0.12, innerG, relief=0.025, N=640, loc=(0, 0, 0.06))
+# v2 steel is a cloudy grey; pull it toward gunmetal and lean on Blender's brushing for the steel look
+face_part('ring_steel', 'steel-ring-front', 2 * R1, 0.14, outerG, relief=0.02, N=640, loc=(0, 0, 0.07),
+          tint_to=(0.62, 0.58, 0.54), tint_k=0.35, brush=0.4, rough_lo=0.1, rough_hi=0.35)
+W1 = R1 * (1 - 0.749)
 
 def axle(parent, direction, r0, r1, rad, mat, collars=()):
     d = Vector(direction).normalized()
@@ -375,8 +481,8 @@ def axle(parent, direction, r0, r1, rad, mat, collars=()):
 # pins between the rings (ride with the outer ring), and the outer ring's axle out to the shell
 for s in (1, -1):
     axle(outerG, (0, s, 0), R2 - 0.05, R1 - W1 + 0.05, 0.05, M_STEEL, [((R2 + R1 - W1) / 2, 0.08, 0.06)])
-    axle(gim, (s, 0, 0), R1 - 0.1, 2.62, 0.06, M_STEEL,
-         [(R1 + 0.07, 0.1, 0.08), (2.42, 0.085, 0.07), (2.56, 0.11, 0.09)])
+    axle(gim, (s, 0, 0), R1 - 0.1, 2.85, 0.06, M_STEEL,
+         [(R1 + 0.07, 0.1, 0.08), (2.65, 0.085, 0.07), (2.79, 0.11, 0.09)])
 
 # -- shell blades: five curved sphere segments around the view axis, each with a rolled lip, opening outward
 def blade(name, R, span, lat0, lat1, mat, parent, n=72, m=14, hook=0.0):
@@ -423,13 +529,13 @@ for k, (phi, span, l0, l1, hook) in enumerate(blade_specs):
     piv = empty(f'bladeO{k}', h)
     drive(piv, 'location', 0, f'0.35*{open_expr}*{1 + 0.12 * math.sin(k * 2.1)}')   # push outward
     drive(piv, 'rotation_euler', 2, f'0.3*{open_expr}')                          # and swing back like a petal
-    blade(f'blade{k}', 2.75, span, l0, l1, M_BLADE, piv, hook=hook)
+    blade(f'blade{k}', 2.8, span, l0, l1, M_BLADE, piv, hook=hook)
 
 # ---------------- camera, lights, world ----------------
 cam_d = bpy.data.cameras.new('cam'); cam_d.lens = 85
-cam_d.dof.use_dof = True; cam_d.dof.focus_distance = 15.6; cam_d.dof.aperture_fstop = 5.6
+cam_d.dof.use_dof = True; cam_d.dof.focus_distance = 14.8; cam_d.dof.aperture_fstop = 5.6
 cam = link(bpy.data.objects.new('cam', cam_d))
-cam.location = (0, -16, 1.5); cam.rotation_euler = (math.radians(84.65), 0, 0)
+cam.location = (0, -15.2, 1.4); cam.rotation_euler = (math.radians(84.75), 0, 0)
 sc.camera = cam
 
 def area(name, loc, color, energy, size):
@@ -445,6 +551,24 @@ area('top', (0, 2, 8), (1.0, 0.85, 0.7), 700, 4)
 w = bpy.data.worlds.new('w'); sc.world = w; w.use_nodes = True
 bg = w.node_tree.nodes['Background']; bg.inputs['Color'].default_value = (0.008, 0.006, 0.006, 1)
 bg.inputs['Strength'].default_value = 1
+# reflections see a soft studio (bright above, warm below) so metal isn't black; the camera still sees the dark bg
+wn = w.node_tree
+grad = wn.nodes.new('ShaderNodeTexGradient'); tco = wn.nodes.new('ShaderNodeTexCoord')
+sepz = wn.nodes.new('ShaderNodeSeparateXYZ'); wn.links.new(tco.outputs['Generated'], sepz.inputs[0])
+rampw = wn.nodes.new('ShaderNodeValToRGB')
+rampw.color_ramp.elements[0].position = 0.35; rampw.color_ramp.elements[0].color = (0.05, 0.03, 0.02, 1)
+rampw.color_ramp.elements[1].position = 0.75; rampw.color_ramp.elements[1].color = (0.55, 0.52, 0.5, 1)
+mz = wn.nodes.new('ShaderNodeMath'); mz.operation = 'MULTIPLY_ADD'; mz.inputs[1].default_value = 0.5; mz.inputs[2].default_value = 0.5
+nz_ = wn.nodes.new('ShaderNodeVectorMath'); nz_.operation = 'NORMALIZE'
+wn.links.new(tco.outputs['Generated'], nz_.inputs[0])
+sep2 = wn.nodes.new('ShaderNodeSeparateXYZ'); wn.links.new(nz_.outputs[0], sep2.inputs[0])
+wn.links.new(sep2.outputs['Z'], mz.inputs[0]); wn.links.new(mz.outputs[0], rampw.inputs['Fac'])
+studio = wn.nodes.new('ShaderNodeBackground'); studio.inputs['Strength'].default_value = 1.0
+wn.links.new(rampw.outputs['Color'], studio.inputs['Color'])
+lp = wn.nodes.new('ShaderNodeLightPath'); mixw = wn.nodes.new('ShaderNodeMixShader')
+wn.links.new(lp.outputs['Is Camera Ray'], mixw.inputs['Fac'])
+wn.links.new(studio.outputs[0], mixw.inputs[1]); wn.links.new(bg.outputs[0], mixw.inputs[2])
+wn.links.new(mixw.outputs[0], wn.nodes['World Output'].inputs['Surface'])
 
 # ---------------- render settings ----------------
 r = sc.render
