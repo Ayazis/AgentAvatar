@@ -465,13 +465,16 @@ M_PLATE = pbr_metal('PlateSteel', 'steel', (0.8, 0.78, 0.76), 0.16, 0.32, aniso=
                     edge=(0.95, 0.93, 0.9))
 M_PLATE_IN = pbr_metal('PlateInset', 'steel', (0.42, 0.41, 0.4), 0.22, 0.4, aniso=0.5, bump=0.1, scale=1.2)
 M_RIVET = plain_metal('RivetSteel', (0.75, 0.73, 0.7), 0.25)
-RSH, ALPHA, RH = 1.8, math.radians(52), 1.1         # shell radius, plate tilt from the view axis, hex radius
+RSH, RH = 1.8, 1.1                                    # shell radius, hex radius
+# dodecahedron layout: front ring of 5 (52° from the view axis), back ring of 5 offset 36° (128°), one at the back.
+# The front face (0°) is left open so the core shows.
+dirs = [(math.radians(52), TAU * k / 5 + math.pi / 2) for k in range(5)] +        [(math.radians(122), TAU * (k + 0.5) / 5 + math.pi / 2) for k in range(5)] + [(math.pi, 0.0)]
 panels = []
-for k in range(5):
-    th = TAU * k / 5 + math.pi / 2
-    n = Vector((math.sin(ALPHA) * math.cos(th), -math.cos(ALPHA), math.sin(ALPHA) * math.sin(th)))
+for al, th in dirs:
+    n = Vector((math.sin(al) * math.cos(th), -math.cos(al), math.sin(al) * math.sin(th)))
     c = n * RSH
-    u = Vector((0, -1, 0)).cross(n).normalized(); w = n.cross(u)
+    ref = Vector((0, -1, 0)) if abs(n.y) < 0.99 else Vector((1, 0, 0))
+    u = ref.cross(n).normalized(); w = n.cross(u)
     panels.append([c + RH * (math.cos(b) * u + math.sin(b) * w) for b in [TAU * i / 6 for i in range(6)]])
 scale = 1.0
 GAP, PT = 1.0, 0.08                                   # plate thickness
