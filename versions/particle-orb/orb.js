@@ -20,11 +20,11 @@ const DIST = 1 / (Math.tan(FOV * Math.PI / 360) * 2 * ORB_R);   // camera distan
 // Each state is a full preset: every value it has is on a slider, and the panel edits the state on screen.
 // Switching state glides every value to the other preset. Presets are saved in this browser.
 const SHARED = { size: 1, bloom: 1, rayLength: .85, rayAmount: 1, hemLength: .85, hemAmount: 1, swirlSpeed: 1, scarfLight: 1,
-  ribCount: 3, ribAmount: 1500, ribSpeed: 1, ribBright: 1, ribWidth: 1, ribOrbit: 1, dustAmount: 700, dustSpeed: 1, dustBright: 1 };
+  breathRate: 1, breathDepth: 1, ribCount: 3, ribAmount: 1500, ribSpeed: 1, ribBright: 1, ribWidth: 1, ribOrbit: 1, dustAmount: 700, dustSpeed: 1, dustBright: 1 };
 const DEFAULTS = {
-  off:     { ...SHARED, open: 0,   spin: .03, core: .05, rays: .02, hemRays: .45, swirls: 0,   power: .16, halo: .12, energy: 0,   lit: 0,    bloom: .7 },
+  off:     { ...SHARED, breathDepth: .6, open: 0,   spin: .03, core: .05, rays: .02, hemRays: .45, swirls: 0,   power: .16, halo: .12, energy: 0,   lit: 0,    bloom: .7 },
   idle:    { ...SHARED, open: .32, spin: .12, core: 1,   rays: .66, hemRays: .66, swirls: .45, power: 1,   halo: .7,  energy: .25, lit: 1 },
-  working: { ...SHARED, ribSpeed: 2.6, ribWidth: 1.25, dustSpeed: 2.6, dustBright: 1.6, open: 1,   spin: .38, core: 1.55, rays: 2,  hemRays: 1.3, swirls: 1,   power: 1.1, halo: 1.15, energy: 1,  lit: 1.75 },
+  working: { ...SHARED, breathRate: 1.37, ribSpeed: 2.6, ribWidth: 1.25, dustSpeed: 2.6, dustBright: 1.6, open: 1,   spin: .38, core: 1.55, rays: 2,  hemRays: 1.3, swirls: 1,   power: 1.1, halo: 1.15, energy: 1,  lit: 1.75 },
 };
 const KEYS = Object.keys(DEFAULTS.idle);
 const STORE = 'rosie-particle-orb-presets-v1';
@@ -295,7 +295,7 @@ function buildShell() {
 const m1 = new THREE.Matrix4(), m2 = new THREE.Matrix4(), m3 = new THREE.Matrix4();
 function placePlate(p, t) {
   const o = p.open;
-  const pushOut = o * (.03 + .1 * p.k) + .006 * Math.sin(t * .9 + p.phase) * live.power;
+  const pushOut = o * (.03 + .1 * p.k) + .006 * Math.sin(t * .9 + p.phase) * live.power + .012 * breath;   // plates part on the in-breath
   const flap = o * (.26 + .38 * p.k) + .02 * Math.sin(t * .7 + p.phase) * o;
   const twirl = o * .3 * (p.k2 - .5);
   const M = p.obj.matrix, P = p.pivot;
@@ -598,7 +598,7 @@ const ribPts = [], dustPts = [];
 let ribYaw = 0, dustClock = 0;
 function updateExtras(dt, t) {
   const alive = Math.min(1, Math.max(0, (live.power - .16) / .84));   // Off: none, Idle and Working: all
-  const breath = Math.sin(t * 1.1), u = 1 / ORB_R;
+  const u = 1 / ORB_R;
   let o = 0;
   const put = (x, y, z, size, a, c) => {                           // picture units (y down, z behind) → orb units
     xPos[o * 3] = x * u; xPos[o * 3 + 1] = -y * u; xPos[o * 3 + 2] = -z * u;
@@ -889,9 +889,21 @@ buildShell();
 resize();
 const clock = new THREE.Clock();
 let t = 0, turn = 0, swirlT = 0;
+
+// Breathing, from the main console (src/rosie/Breath.js): a slower in, a longer softer out, running -1 .. 1.
+// It nearly stops when she's off. Everything takes part: the shell swells and its plates part a little on the
+// in-breath, the core, dust, rays and bloom brighten, the ribbons widen, and through the light the scarf follows.
+let breathPhase = 0, breath = 0;
+function updateBreath(dt) {
+  const alive = Math.min(1, Math.max(0, (live.power - .16) / .84));
+  breathPhase = (breathPhase + dt * (.04 + .96 * alive) * live.breathRate / 5.2) % 1;
+  const p = breathPhase, sm = v => v * v * (3 - 2 * v);
+  breath = ((p < .42 ? sm(p / .42) : 1 - sm((p - .42) / .58)) * 2 - 1) * live.breathDepth;
+}
 function frame(dt) {
   t += dt;
   const ease = rate => 1 - Math.exp(-dt * rate);
+  updateBreath(dt);
   for (const k in live) live[k] += (target[k] - live[k]) * ease(k === 'open' ? 1.6 : 1.3);
   for (const p of plates) { p.open += (target.open - p.open) * ease(p.lag * 1.3); placePlate(p, t); p.occ.matrix.copy(p.obj.matrix); }
 
@@ -901,11 +913,12 @@ function frame(dt) {
   coreGroup.rotation.y = -turn * .6 + dragX;
   halo.rotation.y = turn * .3 + dragX;
   orb.position.y = .025 * Math.sin(t * .8);
+  orb.scale.setScalar(1 + .014 * breath);                     // the shell swells as she breathes in
   heart.quaternion.copy(camera.quaternion);
 
   for (const u of allUniforms) {
-    u.uTime.value = t; u.uPower.value = live.power; u.uCore.value = live.core;
-    u.uEnergy.value = live.energy; u.uSize.value = live.size; u.uHalo.value = live.halo;
+    u.uTime.value = t; u.uPower.value = live.power; u.uCore.value = live.core * (1 + .14 * breath);
+    u.uEnergy.value = live.energy; u.uSize.value = live.size; u.uHalo.value = live.halo * (1 + .2 * breath);
   }
   rayUniforms.uCore.value = 1;                                 // the Intensity slider alone sets how strong the shafts are
   const flick = .96 + .04 * Math.sin(t * 6.7) * Math.sin(t * 2.3 + 1);
@@ -913,13 +926,13 @@ function frame(dt) {
   bgMat.uniforms.uLightGain.value = 1.1 * live.scarfLight;
   bgMat.uniforms.uBloomK.value = bloom.strength;
   bgMat.uniforms.uCode.value = tune.scarfMode;
-  bloom.strength = .45 * Math.pow(live.bloom, 1.6);                // gentle near 1, lower ceiling
+  bloom.strength = .45 * Math.pow(live.bloom, 1.6) * (1 + .1 * breath);                // gentle near 1, lower ceiling
   swirlT += dt * (.25 + .75 * live.energy) * live.swirlSpeed;
   swirlUniforms.uSwirlT.value = swirlT;
   swirlUniforms.uSwirl.value = live.swirls;
   updateExtras(dt, t);
-  raysMat.uniforms.uGain.value = live.rays;
-  raysMat.uniforms.uHemGain.value = live.hemRays;
+  raysMat.uniforms.uGain.value = live.rays * (1 + .18 * breath);
+  raysMat.uniforms.uHemGain.value = live.hemRays * (1 + .18 * breath);
   renderRays();
   renderLightBuffer();
   composer.render();
