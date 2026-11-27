@@ -543,10 +543,14 @@ def plate(name, pts, R0, parent):
     return o
 
 shell = empty('Shell', root)
-drive(shell, 'rotation_euler', 1, f'T*tau*{S["shell"]}/5')     # 5 identical plates: 1/5 turn loops seamlessly
+drive(shell, 'rotation_euler', 1, f'{0.12 * min(1, S["shell"])}*sin(T*tau)')   # gentle sway (plates differ now)
 CAM = Vector((0, -1, 0))
 k = 0
-for pts in panels:
+# two plates are missing (one at the lower right of the front ring, one at the back upper left)
+gone = {min(range(len(panels)), key=lambda i: -(sum(panels[i], Vector()).normalized().dot(Vector((0.7, -0.45, -0.55))))),
+        min(range(len(panels)), key=lambda i: -(sum(panels[i], Vector()).normalized().dot(Vector((-0.6, 0.55, 0.6)))))}
+for pi_, pts in enumerate(panels):
+    if pi_ in gone: continue
     pts = [q * scale for q in pts]
     c = sum(pts, Vector()) / len(pts); n = c.normalized()
     u = (pts[0] - c).normalized(); w = n.cross(u)
@@ -554,7 +558,7 @@ for pts in panels:
     local = [Vector(((q - c).dot(u) * GAP, (q - c).dot(w) * GAP, 0)) for q in pts]
     h = empty(f'panel{k}', shell, loc=tuple(c), rot=basis.to_euler())
     # each plate slides out along its own normal; a little per-plate variation so they don't move as one
-    var = 1 + 0.18 * math.sin(k * 2.39)
+    var = 0.4 + 1.3 * ((k * 0.618034) % 1.0)          # each plate opens its own distance (0.4x-1.7x)
     drive(h, 'location', 0, f'{c.x}+{n.x}*{var}*({S["open"]}+{S["open_p"]}*(0.5+0.5*sin(T*tau*{max(1, S["beats"] // 2)}+{k * 0.7})))')
     drive(h, 'location', 1, f'{c.y}+{n.y}*{var}*({S["open"]}+{S["open_p"]}*(0.5+0.5*sin(T*tau*{max(1, S["beats"] // 2)}+{k * 0.7})))')
     drive(h, 'location', 2, f'{c.z}+{n.z}*{var}*({S["open"]}+{S["open_p"]}*(0.5+0.5*sin(T*tau*{max(1, S["beats"] // 2)}+{k * 0.7})))')
