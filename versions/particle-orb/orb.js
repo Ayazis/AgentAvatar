@@ -48,12 +48,12 @@ const loader = new THREE.TextureLoader();
 const tex = (n, srgb = true) => { const t = loader.load(`../../assets/base/scarf-${n}.webp`); if (srgb) t.colorSpace = THREE.SRGBColorSpace; return t; };
 const bgPass = new ShaderPass({
   uniforms: { tDiffuse: { value: null }, tLit: { value: tex('lit') }, tUnlit: { value: tex('unlit') }, tBright: { value: tex('bright') }, uLit: { value: 0 },
-              tNormal: { value: tex('normal', false) }, tReach: { value: tex('reach', false) }, tGlow: { value: null },
-              uLightUV: { value: new THREE.Vector2(.5, .7) }, uCoreCol: { value: new THREE.Vector3() }, uGlowGain: { value: 1 }, uCode: { value: 1 }, tRays: { value: null }, tOcc: { value: null }, uRays: { value: 1 } },
+              tNormal: { value: tex('normal', false) }, tReach: { value: tex('reach', false) }, tLight: { value: null },
+              uLightUV: { value: new THREE.Vector2(.5, .7) }, uLightGain: { value: 1 }, uCode: { value: 1 }, tRays: { value: null }, tOcc: { value: null }, uRays: { value: 1 } },
   vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0., 1.); }`,
   fragmentShader: `
-    varying vec2 vUv; uniform sampler2D tDiffuse, tLit, tUnlit, tBright, tRays, tOcc, tNormal, tReach, tGlow;
-    uniform float uLit, uRays, uGlowGain, uCode; uniform vec2 uLightUV; uniform vec3 uCoreCol;
+    varying vec2 vUv; uniform sampler2D tDiffuse, tLit, tUnlit, tBright, tRays, tOcc, tNormal, tReach, tLight;
+    uniform float uLit, uRays, uLightGain, uCode; uniform vec2 uLightUV;
     void main(){
       vec2 p = vUv;
       float r = length((p - vec2(.5, .66)) * vec2(1.35, 1.));
@@ -62,21 +62,31 @@ const bgPass = new ShaderPass({
       vec4 u = texture2D(tUnlit, p), l = texture2D(tLit, p), b = texture2D(tBright, p);
       vec4 painted = uLit < 1. ? mix(u, l, uLit) : mix(l, b, smoothstep(0., 1., uLit - 1.));   // more light: lit, then bright
 
-      // code light: the unlit scarf lit by the orb as it is right now. The core is a point light just in front of
-      // the orb; the orb's own blurred glow (swirls, sparks, hems) and the shafts that land on the scarf add their
-      // colour. The normals give the folds their shape; the reach mask (where ChatGPT's bright version has light)
-      // keeps the light out of places the painting says stay dark.
+      // code light: the unlit scarf lit by everything the orb draws, in its own colours. The whole orb is rendered
+      // small into a light buffer; six spots across the orb's lower half are read from a very blurred level of it
+      // and each lights the scarf from its own direction, so blue plates and cool swirls throw blue light and the
+      // core and warm wisps throw orange. The normals shape the folds; the reach mask (where ChatGPT's bright
+      // version has light) keeps the light out of places the painting leaves dark.
       vec3 N = normalize(texture2D(tNormal, p).rgb * 2. - 1.);
       float reach = texture2D(tReach, p).r;
-      vec2 d = (uLightUV - p) * vec2(1.5, 1.);
-      vec3 L = normalize(vec3(d, .22));
-      float wrap = max((dot(N, L) + .3) / 1.3, 0.);
-      float att = 1. / (1. + dot(d, d) * 6.);
-      vec3 glow = texture2D(tGlow, mix(p, uLightUV, .3)).rgb * .6 + texture2D(tGlow, mix(p, uLightUV, .65)).rgb * .4;
-      vec3 light = (uCoreCol * att + glow * uGlowGain + texture2D(tRays, p).rgb * uRays * .6) * wrap * mix(.12, 1.25, reach);
-      float spec = pow(max(dot(N, normalize(L + vec3(0., 0., 1.))), 0.), 20.) * mix(.2, 1., reach);
-      vec3 albedo = mix(u.rgb, vec3(dot(u.rgb, vec3(.3, .59, .11))), .55) * 3. + .03;   // denim takes the warm light, as in the painted bright version
-      vec4 code = vec4(u.rgb + albedo * light + light * spec * .35, u.a);
+      vec3 light = vec3(0.); float spec = 0.;
+      for (int i = 0; i < 6; i++) {
+        vec2 o = i == 0 ? vec2(0., 0.) : i == 1 ? vec2(-.11, -.02) : i == 2 ? vec2(.11, -.02)
+               : i == 3 ? vec2(0., -.17) : i == 4 ? vec2(-.09, -.13) : vec2(.09, -.13);
+        vec2 q = uLightUV + o;
+        vec3 c = textureLod(tLight, q, 3.5).rgb;
+        vec2 d = (q - p) * vec2(1.5, 1.);
+        vec3 L = normalize(vec3(d, .22));
+        float wrap = max((dot(N, L) + .3) / 1.3, 0.);
+        float att = 1. / (1. + dot(d, d) * 7.);
+        light += c * wrap * att;
+        spec += pow(max(dot(N, normalize(L + vec3(0., 0., 1.))), 0.), 20.) * att * dot(c, vec3(.33));
+      }
+      light = light * uLightGain + texture2D(tRays, p).rgb * uRays * .6 * max((dot(N, normalize(vec3((uLightUV - p) * vec2(1.5, 1.), .22))) + .3) / 1.3, 0.);
+      light *= mix(.12, 1.25, reach);
+      spec *= uLightGain * mix(.2, 1., reach);
+      vec3 albedo = mix(u.rgb, vec3(dot(u.rgb, vec3(.3, .59, .11))), .55) * 3. + .03;   // denim takes the light's colour, as in the painted bright version
+      vec4 code = vec4(u.rgb + albedo * light + light * spec * .12, u.a);
       vec4 s = mix(painted, code, uCode);
       gl_FragColor = vec4(mix(bg, s.rgb, s.a) + texture2D(tDiffuse, p).rgb + texture2D(tRays, p).rgb * uRays * (1. - .8 * texture2D(tOcc, p).a), 1.);
     }`,
@@ -94,7 +104,7 @@ const SPRITE_FRAG = `
     vec2 c = gl_PointCoord * 2. - 1.; float d = dot(c, c);
     if (d > 1.) discard;
     float a = exp(-d * 5.) * (1. - d) + vHot * exp(-d * 40.);
-    gl_FragColor = vec4(vCol * a * pow(uSize, -1.7), 1.);
+    gl_FragColor = vec4(vCol * a * min(1., pow(uSize, -1.4)), 1.);   // big sprites dim so they don't flood the bloom; small ones just shrink
   }`;
 const common = () => ({
   uTime: { value: 0 }, uPower: { value: 1 }, uCore: { value: 1 }, uEnergy: { value: 0 },
@@ -587,7 +597,18 @@ const raysScene = new THREE.Scene();
 raysScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), raysMat));
 bgMat.uniforms.tRays.value = raysRT.texture;
 bgMat.uniforms.tOcc.value = occRT.texture;
-bgMat.uniforms.tGlow.value = bloom.renderTargetsVertical[3].texture;   // the orb's glow, heavily blurred: a cheap light buffer
+// the light buffer: the whole orb drawn at a quarter size, with mipmaps so the scarf can read it blurred
+const lightRT = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, depthBuffer: false,
+  generateMipmaps: true, minFilter: THREE.LinearMipmapLinearFilter, magFilter: THREE.LinearFilter });
+bgMat.uniforms.tLight.value = lightRT.texture;
+let lightPx = 1;
+function renderLightBuffer() {
+  for (const u of allUniforms) u.uPx.value = lightPx / 4;     // same look at a quarter of the pixels
+  renderer.setRenderTarget(lightRT); renderer.setClearColor(0x000000, 1); renderer.clear();
+  renderer.render(scene, camera);
+  renderer.setRenderTarget(null);
+  for (const u of allUniforms) u.uPx.value = lightPx;
+}
 
 const lightPos = new V3();
 function renderRays() {
@@ -616,12 +637,14 @@ function resize() {
   bloom.resolution.set(w, h);
   const db = renderer.getDrawingBufferSize(new THREE.Vector2());
   occRT.setSize(Math.ceil(db.x / 2), Math.ceil(db.y / 2));
+  lightRT.setSize(Math.ceil(db.x / 4), Math.ceil(db.y / 4));
   raysRT.setSize(Math.ceil(db.x / 2), Math.ceil(db.y / 2));
   camera.aspect = w / h;
   camera.setViewOffset(w, h, 0, (.5 - ORB_Y) * h, w, h);   // put the orb above the scarf, not mid-frame
   camera.updateProjectionMatrix();
   const px = renderer.getPixelRatio() * h / 820;
   for (const u of allUniforms) u.uPx.value = px;
+  lightPx = px;
 }
 new ResizeObserver(resize).observe(canvas);
 
@@ -677,9 +700,7 @@ function frame(dt) {
   }
   const flick = .96 + .04 * Math.sin(t * 6.7) * Math.sin(t * 2.3 + 1);
   bgMat.uniforms.uLit.value = Math.min(2, live.lit * tune.core) * flick;
-  const coreLight = live.core * tune.core * live.power * flick * tune.scarfLight;
-  bgMat.uniforms.uCoreCol.value.set(1, .48, .16).multiplyScalar(coreLight * 3.2);
-  bgMat.uniforms.uGlowGain.value = .55 * tune.scarfLight;
+  bgMat.uniforms.uLightGain.value = 2.2 * tune.scarfLight;
   bgMat.uniforms.uCode.value = tune.scarfMode;
   bloom.strength = .45 * Math.pow(tune.bloom, 1.6) * (.5 + .5 * live.power);   // gentle near 1, lower ceiling
   rayUniforms.uHemRays.value = tune.hemRays;
@@ -688,6 +709,7 @@ function frame(dt) {
   swirlUniforms.uSwirl.value = live.swirl * tune.swirls;
   raysMat.uniforms.uGain.value = tune.rays * (.45 + .85 * live.energy);   // faint when idle, full when working
   renderRays();
+  renderLightBuffer();
   composer.render();
 }
 renderer.setAnimationLoop(() => frame(Math.min(clock.getDelta(), .05)));
