@@ -602,14 +602,18 @@ const lightRT = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, d
 bgMat.uniforms.tLight.value = lightRT.texture;
 let lightPx = 1;
 function renderLightBuffer() {
-  for (const u of allUniforms) u.uPx.value = lightPx / 4;     // same look at a quarter of the pixels
+  // At a quarter of the pixels the sprites are about a pixel already, so their size can't change there. Draw them at
+  // size 1 and scale their light by how much light the visible sprites give at the slider's size instead: area
+  // grows with size², and above 1 the sprites dim by size^-1.4 (see SPRITE_FRAG), so bigger always means more light.
+  const sz = tune.size, sizeLight = sz < 1 ? sz * sz : Math.pow(sz, .6);
+  for (const u of allUniforms) { u.uPx.value = lightPx / 4; u.uSize.value = 1; }
   // what throws light on the scarf: the plates are big and steady, so they count less; the moving parts count more
-  plateUniforms.uLightMul.value = .3; coreUniforms.uLightMul.value = .7; haloUniforms.uLightMul.value = 1.8;
-  sparkUniforms.uLightMul.value = 3; swirlUniforms.uLightMul.value = 3.5;
+  plateUniforms.uLightMul.value = .3 * sizeLight; coreUniforms.uLightMul.value = .7 * sizeLight; haloUniforms.uLightMul.value = 1.8 * sizeLight;
+  sparkUniforms.uLightMul.value = 3 * sizeLight; swirlUniforms.uLightMul.value = 3.5 * sizeLight;
   renderer.setRenderTarget(lightRT); renderer.setClearColor(0x000000, 1); renderer.clear();
   renderer.render(scene, camera);
   renderer.setRenderTarget(null);
-  for (const u of allUniforms) { u.uPx.value = lightPx; u.uLightMul.value = 1; }
+  for (const u of allUniforms) { u.uPx.value = lightPx; u.uSize.value = sz; u.uLightMul.value = 1; }
 }
 
 const lightPos = new V3();
