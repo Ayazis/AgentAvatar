@@ -22,12 +22,15 @@ const DIST = 1 / (Math.tan(FOV * Math.PI / 360) * 2 * ORB_R);   // camera distan
 const SHARED = { size: 1, bloom: 1, rayLength: .85, rayAmount: 7, hemLength: .85, hemAmount: 1, swirlSpeed: 1, scarfLight: 1,
   breathRate: 1, breathDepth: 1, pulse: 1, flareEvery: 8, flareLen: 1, flareAmount: .8, ribCount: 3, ribAmount: 1500, ribSpeed: 1, ribBright: 1, ribWidth: 1, ribOrbit: 1, dustAmount: 700, dustSpeed: 1, dustBright: 1 };
 const DEFAULTS = {
-  off:     { ...SHARED, breathDepth: .6, pulse: .6, flareEvery: 0, open: 0,   spin: .03, core: .05, rays: .02, hemRays: .45, swirls: 0, power: .16, halo: .12, energy: 0,   lit: 0,    bloom: .7 },
+  off:     { ...SHARED, breathDepth: .6, pulse: .6, flareEvery: 0, open: 0,   spin: .058, core: .05, rays: .02, hemRays: .45, swirls: 0, power: .16, halo: .12, energy: 0,   lit: 0,    bloom: .7 },
   idle:    { ...SHARED, open: .32, spin: .12, core: 1,   rays: .66, hemRays: .66, swirls: 3, power: 1,   halo: .7,  energy: .25, lit: 1 },
-  working: { ...SHARED, breathRate: 1.37, flareEvery: 4, ribSpeed: 2.6, ribWidth: 1.25, dustSpeed: 2.6, dustBright: 1.6, open: 1,   spin: .38, core: 1.55, rays: 2,  hemRays: 1.3, swirls: 7, power: 1.1, halo: 1.15, energy: 1,  lit: 1.75 },
+  working: { ...SHARED, breathRate: 1.37, flareEvery: 4, ribSpeed: 1.07, ribWidth: 1.25, dustSpeed: 1.07, dustBright: 1.6, open: 1,   spin: .156, core: 1.55, rays: 2,  hemRays: 1.3, swirls: 7, power: 1.1, halo: 1.15, energy: 1,  lit: 1.75 },
 };
 const KEYS = Object.keys(DEFAULTS.idle);
-const STORE = 'rosie-particle-orb-presets-v2';   // v2: swirls and core-ray shafts are counts
+const STORE = 'rosie-particle-orb-presets-v3';   // v3: Energy sets the tempo of all motion
+// Energy is the tempo of everything that moves: x1 at Idle's 0.25, about x0.5 asleep, about x2.4 at 1.
+const tempoOf = e => (.35 + 1.3 * e) / .675;
+let tempo = 1;
 const saved = (() => { try { return JSON.parse(localStorage.getItem(STORE)) || {}; } catch { return {}; } })();
 const presets = {};
 for (const st in DEFAULTS) presets[st] = { ...DEFAULTS[st], ...(saved.presets?.[st] || {}) };
@@ -611,11 +614,11 @@ function updateExtras(dt, t) {
 
   // ribbons: comets of particles on tilted orbits, wrapping in front of and behind the shell
   const L = live;
-  ribYaw += dt * .22 * (.15 + .85 * alive) * L.ribSpeed;
+  ribYaw += dt * .22 * (.15 + .85 * alive) * L.ribSpeed * tempo;
   const S = .19 * L.ribOrbit, pace = .12 + .88 * alive, gy = ribYaw * .45, cgy = Math.cos(gy), sgy = Math.sin(gy);
   const ribA = alive ** 1.5 * .85 * L.ribBright;
   for (const rb of ribBands) {
-    rb.head += dt * rb.speed * (1 + .3 * Math.sin(t * .37 + rb.phase)) * L.ribSpeed * pace;
+    rb.head += dt * rb.speed * (1 + .3 * Math.sin(t * .37 + rb.phase)) * L.ribSpeed * pace * tempo;
     const ax = rb.tx + .16 * Math.sin(t * .13 + rb.phase), az = rb.tz + .22 * Math.sin(t * .11 + rb.phase * 1.3);
     rb.cx = Math.cos(ax); rb.sx = Math.sin(ax); rb.cz = Math.cos(az); rb.sz = Math.sin(az);
   }
@@ -647,7 +650,7 @@ function updateExtras(dt, t) {
   }
 
   // swirl dust: loose particles on tilted orbits, some breathing in and out of the orb, each with a short trail
-  dustClock += dt * L.dustSpeed * (.1 + .9 * alive);
+  dustClock += dt * L.dustSpeed * (.1 + .9 * alive) * tempo;
   const dfrac = L.dustAmount / MAXP.dust;
   if (alive > .002) for (const p of dustPts) {
     if (p.d >= dfrac) continue;
@@ -861,7 +864,7 @@ const FMT = {
   hemLength: v => `${v < .35 ? 'short' : v < .7 ? 'medium' : 'long'} · ${Math.round(v * 100)} %`,
   ribCount: v => `${Math.round(v)} ${Math.round(v) === 1 ? 'ribbon' : 'ribbons'}`,
   ribAmount: v => `${Math.round(v)} particles`, dustAmount: v => `${Math.round(v)} particles`,
-  energy: v => `${v < .1 ? 'asleep' : v < .4 ? 'calm' : v < .8 ? 'lively' : v < 1.2 ? 'busy' : 'frantic'} · ${v.toFixed(2)}`,
+  energy: v => `${v < .1 ? 'asleep' : v < .4 ? 'calm' : v < .8 ? 'lively' : v < 1.2 ? 'busy' : 'frantic'} · tempo ×${tempoOf(v).toFixed(2)}`,
   breathRate: v => v < .02 ? 'held' : `${(5.2 / v).toFixed(1)} s per breath`,
   flareEvery: v => v <= 0 ? 'off' : `about every ${v} s`,
   flareLen: v => `${v.toFixed(1)} s`,
@@ -988,7 +991,8 @@ function frame(dt) {
   const B = applyBoosts(dt);
   for (const p of plates) { p.open += (target.open - p.open) * ease(p.lag * 1.3); placePlate(p, t); p.occ.matrix.copy(p.obj.matrix); }
 
-  turn += dt * live.spin;
+  tempo = tempoOf(live.energy);
+  turn += dt * live.spin * tempo;
   if (!dragging) { dragY *= 1 - ease(1.5); }
   spin.rotation.set(dragY, turn + dragX, 0);
   coreGroup.rotation.y = -turn * .6 + dragX;
@@ -1008,7 +1012,7 @@ function frame(dt) {
   bgMat.uniforms.uBloomK.value = bloom.strength;
   bgMat.uniforms.uCode.value = tune.scarfMode;
   bloom.strength = .45 * Math.pow(live.bloom, 1.6) * (1 + .1 * breath);                // gentle near 1, lower ceiling
-  swirlT += dt * (.25 + .75 * live.energy) * live.swirlSpeed;
+  swirlT += dt * .44 * tempo * live.swirlSpeed;
   swirlUniforms.uSwirlT.value = swirlT;
   swirlUniforms.uSwirl.value = live.swirls / 7;                // a count of wisps, 0 .. 7
   updateExtras(dt, t);
