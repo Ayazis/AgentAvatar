@@ -48,12 +48,12 @@ const loader = new THREE.TextureLoader();
 const tex = (n, srgb = true) => { const t = loader.load(`../../assets/base/scarf-${n}.webp`); if (srgb) t.colorSpace = THREE.SRGBColorSpace; return t; };
 const bgPass = new ShaderPass({
   uniforms: { tDiffuse: { value: null }, tLit: { value: tex('lit') }, tUnlit: { value: tex('unlit') }, tBright: { value: tex('bright') }, uLit: { value: 0 },
-              tNormal: { value: tex('normal', false) }, tReach: { value: tex('reach', false) }, tLight: { value: null },
+              tNormal: { value: tex('normal', false) }, tReach: { value: tex('reach', false) }, tLight: { value: null }, tGlow: { value: null }, uBloomK: { value: 1 },
               uLightUV: { value: new THREE.Vector2(.5, .7) }, uLightGain: { value: 1 }, uCode: { value: 1 }, tRays: { value: null }, tOcc: { value: null }, uRays: { value: 1 } },
   vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0., 1.); }`,
   fragmentShader: `
-    varying vec2 vUv; uniform sampler2D tDiffuse, tLit, tUnlit, tBright, tRays, tOcc, tNormal, tReach, tLight;
-    uniform float uLit, uRays, uLightGain, uCode; uniform vec2 uLightUV;
+    varying vec2 vUv; uniform sampler2D tDiffuse, tLit, tUnlit, tBright, tRays, tOcc, tNormal, tReach, tLight, tGlow;
+    uniform float uLit, uRays, uLightGain, uCode, uBloomK; uniform vec2 uLightUV;
     void main(){
       vec2 p = vUv;
       float r = length((p - vec2(.5, .66)) * vec2(1.35, 1.));
@@ -73,7 +73,8 @@ const bgPass = new ShaderPass({
       for (int i = 0; i < 20; i++) {                           // a 5 x 4 grid over the orb's lower half and just below it
         vec2 o = vec2(float(i - (i / 5) * 5) - 2., -float(i / 5)) * vec2(.075, .095);
         vec2 q = uLightUV + o;
-        vec3 c = textureLod(tLight, q, 2.6).rgb;
+        // everything that glows at this spot, as it is on screen: the particles (weighted), the bloom and the shafts
+        vec3 c = textureLod(tLight, q, 2.6).rgb + texture2D(tGlow, q).rgb * uBloomK * 9. + texture2D(tRays, q).rgb * uRays * 1.4;
         vec2 d = (q - p) * vec2(1.5, 1.);
         vec3 L = normalize(vec3(d, .2));
         float wrap = max((dot(N, L) + .3) / 1.3, 0.);
@@ -81,7 +82,7 @@ const bgPass = new ShaderPass({
         light += c * wrap * att;
         spec += pow(max(dot(N, normalize(L + vec3(0., 0., 1.))), 0.), 20.) * att * dot(c, vec3(.33));
       }
-      light = light * uLightGain + texture2D(tRays, p).rgb * uRays * .6 * max((dot(N, normalize(vec3((uLightUV - p) * vec2(1.5, 1.), .22))) + .3) / 1.3, 0.);
+      light = light * uLightGain + texture2D(tRays, p).rgb * uRays * 1.3 * max((dot(N, normalize(vec3((uLightUV - p) * vec2(1.5, 1.), .22))) + .3) / 1.3, 0.);
       light *= mix(.12, 1.25, reach);
       spec *= uLightGain * mix(.2, 1., reach);
       vec3 albedo = mix(u.rgb, vec3(dot(u.rgb, vec3(.3, .59, .11))), .55) * 3. + .03;   // denim takes the light's colour, as in the painted bright version
@@ -600,6 +601,7 @@ bgMat.uniforms.tOcc.value = occRT.texture;
 const lightRT = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, depthBuffer: false,
   generateMipmaps: true, minFilter: THREE.LinearMipmapLinearFilter, magFilter: THREE.LinearFilter });
 bgMat.uniforms.tLight.value = lightRT.texture;
+bgMat.uniforms.tGlow.value = bloom.renderTargetsVertical[2].texture;   // the bloom's blurred glow, before its strength is applied
 let lightPx = 1;
 function renderLightBuffer() {
   // At a quarter of the pixels the sprites are about a pixel already, so their size can't change there. Draw them at
@@ -707,6 +709,7 @@ function frame(dt) {
   const flick = .96 + .04 * Math.sin(t * 6.7) * Math.sin(t * 2.3 + 1);
   bgMat.uniforms.uLit.value = Math.min(2, live.lit * tune.core) * flick;
   bgMat.uniforms.uLightGain.value = 1.1 * tune.scarfLight;
+  bgMat.uniforms.uBloomK.value = bloom.strength;
   bgMat.uniforms.uCode.value = tune.scarfMode;
   bloom.strength = .45 * Math.pow(tune.bloom, 1.6) * (.5 + .5 * live.power);   // gentle near 1, lower ceiling
   rayUniforms.uHemRays.value = tune.hemRays;
@@ -720,4 +723,4 @@ function frame(dt) {
 }
 renderer.setAnimationLoop(() => frame(Math.min(clock.getDelta(), .05)));
 // for capture and testing: step the animation by hand (a hidden tab gets no animation frames)
-window.rosieOrb = { setState, step(seconds, fps = 30) { for (let i = 0; i < seconds * fps; i++) frame(1 / fps); } };
+window.rosieOrb = { setState, debug: { bloom, bgMat, renderer }, step(seconds, fps = 30) { for (let i = 0; i < seconds * fps; i++) frame(1 / fps); } };
