@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>Rosie · Particle orb spike</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #070307; color: #e9e2ea; font: 13px/1.4 system-ui, sans-serif; overflow: hidden; }
+  .stage { position: fixed; inset: 0; display: grid; place-items: center; }
+  canvas { display: block; width: min(100vw, 150vh); height: min(66.667vw, 100vh); }
+  .panel { position: fixed; top: 12px; right: 12px; width: 240px; padding: 12px 14px; border-radius: 10px;
+           background: rgba(20, 12, 22, .72); border: 1px solid rgba(255,255,255,.08); backdrop-filter: blur(8px); }
+  .panel h1 { font-size: 13px; font-weight: 600; margin: 0 0 10px; letter-spacing: .02em; }
+  .panel h1 span { color: #9a8ea0; font-weight: 400; }
+  .states { display: flex; gap: 6px; margin-bottom: 12px; }
+  .states button { flex: 1; padding: 6px 0; border-radius: 6px; border: 1px solid rgba(255,255,255,.12);
+                   background: transparent; color: inherit; font: inherit; cursor: pointer; }
+  .states button.on { background: #f08a3c; border-color: #f08a3c; color: #1a0a04; font-weight: 600; }
+  label { display: grid; grid-template-columns: 1fr auto; gap: 0 8px; margin: 6px 0; color: #b9aebd; }
+  label input[type=range] { grid-column: 1 / -1; width: 100%; accent-color: #f08a3c; }
+  label output { color: #e9e2ea; font-variant-numeric: tabular-nums; }
+  select { grid-column: 1 / -1; width: 100%; background: #1c121e; color: inherit; border: 1px solid rgba(255,255,255,.12); border-radius: 6px; padding: 4px; font: inherit; }
+  details summary { cursor: pointer; color: #9a8ea0; margin-top: 6px; }
+  .hint { color: #7d7282; margin-top: 8px; font-size: 12px; }
+  a { color: #d9b09a; }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+} }
+</script>
+<script type="module" src="orb.js"></script>
+</head>
+<body>
+<div class="stage"><canvas id="c" aria-label="A shell of glowing denim plates around a burning particle core, floating above a knotted denim scarf"></canvas></div>
+
+<div class="panel">
+  <h1>Particle orb <span>· spike</span></h1>
+  <div class="states">
+    <button data-state="off">Off</button>
+    <button data-state="idle" class="on">Idle</button>
+    <button data-state="working">Working</button>
+  </div>
+  <label>Opening <output id="o-open"></output><input id="open" type="range" min="0" max="1.6" step=".01" value="1"></label>
+  <label>Turn speed <output id="o-spin"></output><input id="spin" type="range" min="0" max="3" step=".01" value="1"></label>
+  <label>Core glow <output id="o-core"></output><input id="core" type="range" min="0" max="2" step=".01" value="1"></label>
+  <label>Particle size <output id="o-size"></output><input id="size" type="range" min=".4" max="2.5" step=".01" value="1"></label>
+  <label>Bloom <output id="o-bloom"></output><input id="bloom" type="range" min="0" max="2.5" step=".01" value="1"></label>
+  <details>
+    <summary>Shell build</summary>
+    <label>Plates <select id="layout"><option value="6">6 (curved squares)</option><option value="12">12 (pentagons)</option></select></label>
+    <label>Plate gap <output id="o-gap"></output><input id="gap" type="range" min=".005" max=".12" step=".005" value=".03"></label>
+    <label>Density <output id="o-density"></output><input id="density" type="range" min=".3" max="2" step=".05" value="1"></label>
+  </details>
+  <div class="hint">Keys 1 · 2 · 3 switch state. Drag to turn the orb. <a href="../index.html">All versions</a></div>
+</div>
+</body>
+</html>
