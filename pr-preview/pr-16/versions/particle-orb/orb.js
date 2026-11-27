@@ -25,7 +25,7 @@ const STATES = {
 const live = { ...STATES.idle };
 let target = STATES.idle;
 
-const tune = { open: 1, spin: 1, core: 1, size: 1, bloom: 1, rays: 1, rayLength: .85, hemRays: 1, swirls: 1, swirlSpeed: 1, layout: 6, gap: .03, density: 1 };
+const tune = { open: 1, spin: 1, core: 1, size: 1, bloom: 1, rays: 1, rayLength: .85, hemRays: 1, swirls: 1, swirlSpeed: 1, scarfMode: 1, scarfLight: 1, layout: 6, gap: .03, density: 1 };
 
 // ---------------------------------------------------------------- renderer
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
@@ -45,19 +45,39 @@ composer.addPass(bloom);
 
 // ---------------------------------------------------------------- background + scarf
 const loader = new THREE.TextureLoader();
-const tex = n => { const t = loader.load(`../../assets/base/scarf-${n}.webp`); t.colorSpace = THREE.SRGBColorSpace; return t; };
+const tex = (n, srgb = true) => { const t = loader.load(`../../assets/base/scarf-${n}.webp`); if (srgb) t.colorSpace = THREE.SRGBColorSpace; return t; };
 const bgPass = new ShaderPass({
-  uniforms: { tDiffuse: { value: null }, tLit: { value: tex('lit') }, tUnlit: { value: tex('unlit') }, tBright: { value: tex('bright') }, uLit: { value: 0 }, tRays: { value: null }, tOcc: { value: null }, uRays: { value: 1 } },
+  uniforms: { tDiffuse: { value: null }, tLit: { value: tex('lit') }, tUnlit: { value: tex('unlit') }, tBright: { value: tex('bright') }, uLit: { value: 0 },
+              tNormal: { value: tex('normal', false) }, tReach: { value: tex('reach', false) }, tGlow: { value: null },
+              uLightUV: { value: new THREE.Vector2(.5, .7) }, uCoreCol: { value: new THREE.Vector3() }, uGlowGain: { value: 1 }, uCode: { value: 1 }, tRays: { value: null }, tOcc: { value: null }, uRays: { value: 1 } },
   vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0., 1.); }`,
   fragmentShader: `
-    varying vec2 vUv; uniform sampler2D tDiffuse, tLit, tUnlit, tBright, tRays, tOcc; uniform float uLit, uRays;
+    varying vec2 vUv; uniform sampler2D tDiffuse, tLit, tUnlit, tBright, tRays, tOcc, tNormal, tReach, tGlow;
+    uniform float uLit, uRays, uGlowGain, uCode; uniform vec2 uLightUV; uniform vec3 uCoreCol;
     void main(){
       vec2 p = vUv;
       float r = length((p - vec2(.5, .66)) * vec2(1.35, 1.));
       vec3 bg = mix(vec3(.016, .004, .013), vec3(.002, .001, .003), smoothstep(.05, .95, r));
       bg += vec3(.04, .012, .006) * exp(-pow(length((p - vec2(.5, .14)) * vec2(1., 2.6)), 2.) * 3.) * min(uLit, 1.5);   // warm floor
       vec4 u = texture2D(tUnlit, p), l = texture2D(tLit, p), b = texture2D(tBright, p);
-      vec4 s = uLit < 1. ? mix(u, l, uLit) : mix(l, b, smoothstep(0., 1., uLit - 1.));   // more light: lit, then bright
+      vec4 painted = uLit < 1. ? mix(u, l, uLit) : mix(l, b, smoothstep(0., 1., uLit - 1.));   // more light: lit, then bright
+
+      // code light: the unlit scarf lit by the orb as it is right now. The core is a point light just in front of
+      // the orb; the orb's own blurred glow (swirls, sparks, hems) and the shafts that land on the scarf add their
+      // colour. The normals give the folds their shape; the reach mask (where ChatGPT's bright version has light)
+      // keeps the light out of places the painting says stay dark.
+      vec3 N = normalize(texture2D(tNormal, p).rgb * 2. - 1.);
+      float reach = texture2D(tReach, p).r;
+      vec2 d = (uLightUV - p) * vec2(1.5, 1.);
+      vec3 L = normalize(vec3(d, .22));
+      float wrap = max((dot(N, L) + .3) / 1.3, 0.);
+      float att = 1. / (1. + dot(d, d) * 6.);
+      vec3 glow = texture2D(tGlow, mix(p, uLightUV, .3)).rgb * .6 + texture2D(tGlow, mix(p, uLightUV, .65)).rgb * .4;
+      vec3 light = (uCoreCol * att + glow * uGlowGain + texture2D(tRays, p).rgb * uRays * .6) * wrap * mix(.12, 1.25, reach);
+      float spec = pow(max(dot(N, normalize(L + vec3(0., 0., 1.))), 0.), 20.) * mix(.2, 1., reach);
+      vec3 albedo = mix(u.rgb, vec3(dot(u.rgb, vec3(.3, .59, .11))), .55) * 3. + .03;   // denim takes the warm light, as in the painted bright version
+      vec4 code = vec4(u.rgb + albedo * light + light * spec * .35, u.a);
+      vec4 s = mix(painted, code, uCode);
       gl_FragColor = vec4(mix(bg, s.rgb, s.a) + texture2D(tDiffuse, p).rgb + texture2D(tRays, p).rgb * uRays * (1. - .8 * texture2D(tOcc, p).a), 1.);
     }`,
 });
@@ -482,7 +502,7 @@ function buildSwirls() {
       p += side * aStrand * spread * 2. + lift * (curl - .5) * spread * 1.2;
       p += (vec3(fract(aSeed * 71.3), fract(aSeed * 13.7), fract(aSeed * 37.1)) - .5) * spread * .35;
       float b = pow(1. - T, 1.3) * smoothstep(0., .03, T + .01);
-      float on = smoothstep(aStream - .08, aStream + .02, uSwirl);        // wisps come in one by one as uSwirl grows
+      float on = smoothstep(aStream + .01, aStream + .11, uSwirl);        // wisps come in one by one as uSwirl grows
       float tw = .75 + .25 * sin(uTime * (2. + aSeed * 6.) + aSeed * 40.);
       vec3 warm = mix(vec3(2.2, 1.3, .55), vec3(1.4, .32, .04), smoothstep(0., .5, T));
       vec3 cool = mix(vec3(.9, 1.6, 2.2), vec3(.12, .5, 1.5), smoothstep(0., .5, T));
@@ -567,6 +587,7 @@ const raysScene = new THREE.Scene();
 raysScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), raysMat));
 bgMat.uniforms.tRays.value = raysRT.texture;
 bgMat.uniforms.tOcc.value = occRT.texture;
+bgMat.uniforms.tGlow.value = bloom.renderTargetsVertical[3].texture;   // the orb's glow, heavily blurred: a cheap light buffer
 
 const lightPos = new V3();
 function renderRays() {
@@ -574,6 +595,7 @@ function renderRays() {
   lightPos.set(0, orb.position.y, 0).project(camera);
   raysMat.uniforms.uLight.value.set(lightPos.x * .5 + .5, lightPos.y * .5 + .5);
   raysMat.uniforms.uLen.value = tune.rayLength;
+  bgMat.uniforms.uLightUV.value.copy(raysMat.uniforms.uLight.value);
   camera.layers.set(1);
   renderer.setRenderTarget(occRT); renderer.setClearColor(0x000000, 0); renderer.clear();
   renderer.render(scene, camera);
@@ -620,7 +642,7 @@ function setState(s) {
 document.querySelectorAll('.states button').forEach(b => b.onclick = () => setState(b.dataset.state));
 addEventListener('keydown', e => { const s = { 1: 'off', 2: 'idle', 3: 'working' }[e.key]; if (s) setState(s); });
 
-for (const id of ['open', 'spin', 'core', 'size', 'bloom', 'rays', 'rayLength', 'hemRays', 'swirls', 'swirlSpeed', 'gap', 'density', 'layout']) {
+for (const id of ['open', 'spin', 'core', 'size', 'bloom', 'rays', 'rayLength', 'hemRays', 'swirls', 'swirlSpeed', 'scarfMode', 'scarfLight', 'gap', 'density', 'layout']) {
   const el = document.getElementById(id), out = document.getElementById('o-' + id);
   const show = () => { if (out) out.textContent = (+el.value).toFixed(id === 'gap' ? 3 : 2); };
   el.value = tune[id]; show();
@@ -655,6 +677,10 @@ function frame(dt) {
   }
   const flick = .96 + .04 * Math.sin(t * 6.7) * Math.sin(t * 2.3 + 1);
   bgMat.uniforms.uLit.value = Math.min(2, live.lit * tune.core) * flick;
+  const coreLight = live.core * tune.core * live.power * flick * tune.scarfLight;
+  bgMat.uniforms.uCoreCol.value.set(1, .48, .16).multiplyScalar(coreLight * 3.2);
+  bgMat.uniforms.uGlowGain.value = .55 * tune.scarfLight;
+  bgMat.uniforms.uCode.value = tune.scarfMode;
   bloom.strength = .45 * Math.pow(tune.bloom, 1.6) * (.5 + .5 * live.power);   // gentle near 1, lower ceiling
   rayUniforms.uHemRays.value = tune.hemRays;
   swirlT += dt * (.25 + .75 * live.energy) * tune.swirlSpeed;
