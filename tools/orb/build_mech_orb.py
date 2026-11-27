@@ -23,9 +23,9 @@ TAU = math.tau
 # per state: gear turns per loop, gimbal swing, blade opening (rest + pulse), core glow (base, pulse, pulses per loop)
 STATES = {   # gear turns per loop, shell opening distance + pulse, shell turns (in 1/5ths: 5-fold symmetric), core glow
     'off':      dict(gear=0, open=0.0,  open_p=0.0,  shell=0, glow=0.15, glow_p=0.0, beats=1),
-    'idle':     dict(gear=1, open=0.28, open_p=0.04, shell=1, glow=1.0,  glow_p=0.3, beats=2),
-    'thinking': dict(gear=3, open=0.42, open_p=0.06, shell=2, glow=1.5,  glow_p=0.4, beats=6),
-    'talking':  dict(gear=2, open=0.55, open_p=0.18, shell=1, glow=2.0,  glow_p=0.8, beats=12),
+    'idle':     dict(gear=1, open=0.16, open_p=0.03, shell=1, glow=1.0,  glow_p=0.3, beats=2),
+    'thinking': dict(gear=3, open=0.26, open_p=0.04, shell=2, glow=1.5,  glow_p=0.4, beats=6),
+    'talking':  dict(gear=2, open=0.34, open_p=0.12, shell=1, glow=2.0,  glow_p=0.8, beats=12),
 }
 S = STATES[STATE]
 
@@ -460,35 +460,50 @@ if hasattr(CORE_NZ, 'noise_dimensions'): CORE_NZ.noise_dimensions = '4D'
 # -- shell: five large flat steel hexagons round the core. Closed, they huddle into a rough orb around it;
 # opening pushes each plate outward along its own direction. The front stays open so the core shows.
 from mathutils import Matrix
-M_EDGEGLOW, _ = glow_mat('EdgeGlow', (1.0, 0.42, 0.1), 5)
+M_EDGEGLOW, _ = glow_mat('EdgeGlow', (1.0, 0.42, 0.1), 1.6)
 M_PLATE = pbr_metal('PlateSteel', 'steel', (0.8, 0.78, 0.76), 0.16, 0.32, aniso=0.6, bump=0.08, scale=0.8,
                     edge=(0.95, 0.93, 0.9))
 M_PLATE_IN = pbr_metal('PlateInset', 'steel', (0.42, 0.41, 0.4), 0.22, 0.4, aniso=0.5, bump=0.1, scale=1.2)
 M_RIVET = plain_metal('RivetSteel', (0.75, 0.73, 0.7), 0.25)
-RSH, RH = 1.8, 1.1                                    # shell radius, hex radius
-# dodecahedron layout: front ring of 5 (52° from the view axis), back ring of 5 offset 36° (128°), one at the back.
-# The front face (0°) is left open so the core shows.
-dirs = [(math.radians(52), TAU * k / 5 + math.pi / 2) for k in range(5)] +        [(math.radians(122), TAU * (k + 0.5) / 5 + math.pi / 2) for k in range(5)] + [(math.pi, 0.0)]
+M_PLATE_BACK = plain_metal('PlateInside', (0.09, 0.085, 0.08), 0.45)   # inner faces: dark, lit by the core
+RSH = 1.8                                             # distance from the centre to each plate
+# A true dodecahedron, so the pentagon plates close into a ball without gaps or overlaps. Its face centres are the
+# directions of an icosahedron's vertices (one turned to face the camera, left open); its corners are the
+# centres of the icosahedron's faces.
+PHI = (1 + 5 ** 0.5) / 2
+ico = [Vector(v) for v in [(0, 1, PHI), (0, 1, -PHI), (0, -1, PHI), (0, -1, -PHI), (1, PHI, 0), (1, -PHI, 0),
+                           (-1, PHI, 0), (-1, -PHI, 0), (PHI, 0, 1), (PHI, 0, -1), (-PHI, 0, 1), (-PHI, 0, -1)]]
+turn = ico[2].normalized().rotation_difference(Vector((0, -1, 0)))
+ico = [turn @ v for v in ico]
+near = lambda i, j: abs((ico[i] - ico[j]).length - 2) < 1e-4
+tris = [(i, j, k) for i in range(12) for j in range(i + 1, 12) for k in range(j + 1, 12)
+        if near(i, j) and near(j, k) and near(i, k)]
 panels = []
-for al, th in dirs:
-    n = Vector((math.sin(al) * math.cos(th), -math.cos(al), math.sin(al) * math.sin(th)))
-    c = n * RSH
-    ref = Vector((0, -1, 0)) if abs(n.y) < 0.99 else Vector((1, 0, 0))
-    u = ref.cross(n).normalized(); w = n.cross(u)
-    panels.append([c + RH * (math.cos(b) * u + math.sin(b) * w) for b in [TAU * i / 6 for i in range(6)]])
+for i in range(12):
+    n = ico[i].normalized()
+    if n.dot(Vector((0, -1, 0))) > 0.99: continue       # the front face stays open
+    corners = [(ico[a_] + ico[b_] + ico[c_]) / 3 for a_, b_, c_ in tris if i in (a_, b_, c_)]
+    c0 = sum(corners, Vector()) / 5
+    k_ = RSH / c0.length                               # scale so the face sits RSH from the centre
+    corners = [q * k_ for q in corners]; c0 = c0 * k_
+    u = (corners[0] - c0).normalized(); w = n.cross(u)
+    corners.sort(key=lambda q: math.atan2((q - c0).dot(w), (q - c0).dot(u)))
+    panels.append(corners)
 scale = 1.0
-GAP, PT = 1.0, 0.08                                   # plate thickness
+GAP, PT = 0.965, 0.08                                 # small seam between plates; plate thickness
 
 def plate(name, pts, parent):
     """Flat sharp plate in its own frame (z = outward normal), lightly chamfered, raised gunmetal inset,
     rivets near the corners and a glowing outline on the outer face."""
     o = mesh_obj(name, pts, [tuple(range(len(pts)))], M_PLATE, parent)
-    o.data.shade_flat(); solidify(o, PT, -1); bevel(o, 0.008, 1, angle=30)
+    o.data.materials.append(M_PLATE_BACK)
+    o.data.shade_flat(); solidify(o, PT, -1); sm = o.modifiers['solid']; sm.material_offset = 1; sm.material_offset_rim = 0
+    bevel(o, 0.008, 1, angle=30)
     ins = mesh_obj(name + '_inset', [q * 0.62 for q in pts], [tuple(range(len(pts)))], M_PLATE_IN, o)
     ins.data.shade_flat(); ins.location = (0, 0, 0.012); solidify(ins, 0.024); bevel(ins, 0.006, 1, angle=30)
     for q in pts:
         rivet(o, q * 0.8, (0, 0, 1), 0.03, M_RIVET)
-    cu = bpy.data.curves.new(name + '_glow', 'CURVE'); cu.dimensions = '3D'; cu.bevel_depth = 0.008
+    cu = bpy.data.curves.new(name + '_glow', 'CURVE'); cu.dimensions = '3D'; cu.bevel_depth = 0.005
     sp = cu.splines.new('POLY'); sp.points.add(len(pts)); sp.use_cyclic_u = False
     for i, q in enumerate(pts + [pts[0]]):
         sp.points[i].co = (q.x * 0.985, q.y * 0.985, 0.002, 1)
@@ -518,20 +533,20 @@ print('shell plates:', k)
 
 # ---------------- camera, lights, world ----------------
 cam_d = bpy.data.cameras.new('cam'); cam_d.lens = 85
-cam_d.dof.use_dof = True; cam_d.dof.focus_distance = 12.6; cam_d.dof.aperture_fstop = 5.6
+cam_d.dof.use_dof = True; cam_d.dof.focus_distance = 14.6; cam_d.dof.aperture_fstop = 5.6
 cam = link(bpy.data.objects.new('cam', cam_d))
-cam.location = (0, -13, 1.2); cam.rotation_euler = (math.radians(84.7), 0, 0)
+cam.location = (0, -15, 1.4); cam.rotation_euler = (math.radians(84.7), 0, 0)
 sc.camera = cam
 
 def area(name, loc, color, energy, size):
     l = bpy.data.lights.new(name, 'AREA'); l.color = color; l.energy = energy; l.size = size
     o = link(bpy.data.objects.new(name, l)); o.location = loc
     o.rotation_euler = (-Vector(loc)).to_track_quat('-Z', 'Y').to_euler()
-area('key', (-5, -7, 6), (1.0, 0.94, 0.88), 1500, 5)    # soft warm-white key, upper left
+area('key', (-6, -8, 3.5), (1.0, 0.94, 0.88), 1300, 6)    # soft warm-white key, upper left
 area('fill', (7, -7, -2), (0.6, 0.7, 0.95), 500, 8)      # cool fill, lower right
 area('rimR', (6, 6, 3), (1.0, 0.55, 0.22), 1400, 2)     # copper rims from behind
 area('rimL', (-6, 6, -3), (1.0, 0.6, 0.3), 1000, 2)
-area('top', (0, 2, 8), (1.0, 0.85, 0.7), 700, 4)
+area('top', (0, 2, 8), (1.0, 0.85, 0.7), 250, 4)
 
 w = bpy.data.worlds.new('w'); sc.world = w; w.use_nodes = True
 bg = w.node_tree.nodes['Background']; bg.inputs['Color'].default_value = (0.008, 0.006, 0.006, 1)
