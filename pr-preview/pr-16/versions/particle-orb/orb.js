@@ -25,7 +25,7 @@ const STATES = {
 const live = { ...STATES.idle };
 let target = STATES.idle;
 
-const tune = { open: 1, spin: 1, core: 1, size: 1, bloom: 1, layout: 6, gap: .03, density: 1 };
+const tune = { open: 1, spin: 1, core: 1, size: 1, bloom: 1, rays: 1, rayLength: .85, hemRays: 1, layout: 6, gap: .03, density: 1 };
 
 // ---------------------------------------------------------------- renderer
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
@@ -47,10 +47,10 @@ composer.addPass(bloom);
 const loader = new THREE.TextureLoader();
 const tex = n => { const t = loader.load(`../../assets/base/scarf-${n}.webp`); t.colorSpace = THREE.SRGBColorSpace; return t; };
 const bgPass = new ShaderPass({
-  uniforms: { tDiffuse: { value: null }, tLit: { value: tex('lit') }, tUnlit: { value: tex('unlit') }, uLit: { value: 0 } },
+  uniforms: { tDiffuse: { value: null }, tLit: { value: tex('lit') }, tUnlit: { value: tex('unlit') }, uLit: { value: 0 }, tRays: { value: null }, tOcc: { value: null }, uRays: { value: 1 } },
   vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0., 1.); }`,
   fragmentShader: `
-    varying vec2 vUv; uniform sampler2D tDiffuse, tLit, tUnlit; uniform float uLit;
+    varying vec2 vUv; uniform sampler2D tDiffuse, tLit, tUnlit, tRays, tOcc; uniform float uLit, uRays;
     void main(){
       vec2 p = vUv;
       float r = length((p - vec2(.5, .66)) * vec2(1.35, 1.));
@@ -58,7 +58,7 @@ const bgPass = new ShaderPass({
       bg += vec3(.04, .012, .006) * exp(-pow(length((p - vec2(.5, .14)) * vec2(1., 2.6)), 2.) * 3.) * uLit;   // warm floor
       vec4 u = texture2D(tUnlit, p), l = texture2D(tLit, p);
       vec4 s = mix(u, l, uLit);
-      gl_FragColor = vec4(mix(bg, s.rgb, s.a) + texture2D(tDiffuse, p).rgb, 1.);
+      gl_FragColor = vec4(mix(bg, s.rgb, s.a) + texture2D(tDiffuse, p).rgb + texture2D(tRays, p).rgb * uRays * (1. - .8 * texture2D(tOcc, p).a), 1.);
     }`,
 });
 const bgMat = bgPass.material;
@@ -229,20 +229,22 @@ shell.rotation.set(.42, 0, .28);
 let plates = [];
 
 function buildShell() {
-  for (const p of plates) { shell.remove(p.obj); p.obj.geometry.dispose(); }
+  for (const p of plates) { shell.remove(p.obj, p.occ); p.obj.geometry.dispose(); }
   const centres = plateCentres(tune.layout), rnd = mulberry32(11);
   plates = centres.map((_, i) => {
     const { g, c, U, W } = buildPlate(centres, i, tune.gap, tune.density, rnd);
     const obj = new THREE.Points(g, plateMat);
     obj.matrixAutoUpdate = false; obj.frustumCulled = false;
-    shell.add(obj);
+    const occ = new THREE.Points(g, occMat);                 // the same plate, drawn into the ray mask
+    occ.matrixAutoUpdate = false; occ.frustumCulled = false; occ.layers.set(1);
+    shell.add(obj, occ);
     // each plate opens like a petal: it swings out about a hinge on one of its edges
     const ang = rnd() * Math.PI * 2;
     const dir = new V3().addScaledVector(U, Math.cos(ang)).addScaledVector(W, Math.sin(ang));
     let lo = 0, hi = 1.6;
     for (let it = 0; it < 22; it++) { const mid = (lo + hi) / 2; if (margin(new V3().copy(c).addScaledVector(dir, mid).normalize(), centres, i, tune.gap) > 0) lo = mid; else hi = mid; }
     const pivot = new V3().copy(c).addScaledVector(dir, lo).normalize();
-    return { obj, c, pivot, hinge: new V3().crossVectors(c, dir).normalize(),
+    return { obj, occ, c, pivot, hinge: new V3().crossVectors(c, dir).normalize(),
              k: rnd(), k2: rnd(), lag: .9 + rnd() * 1.4, open: live.open, phase: rnd() * 6.28 };
   });
 }
@@ -430,7 +432,89 @@ function buildSparks() {
 }
 orb.add(buildSparks());
 
-const allUniforms = [plateUniforms, coreUniforms, haloUniforms, sparkUniforms];
+// ---------------------------------------------------------------- light shafts
+// The core's light is drawn into a small mask, with the front plates as black silhouettes over it and their hems
+// as thin bright lines. Smearing that mask outward from the core gives shafts that only escape through the gaps
+// between the plates, and streaks that run on from the glowing hems.
+const rayUniforms = { ...common(), uHemRays: { value: 1 } };
+const occMat = new THREE.ShaderMaterial({
+  uniforms: rayUniforms, depthTest: false, depthWrite: false,
+  vertexShader: `
+    attribute float aKind;
+    uniform float uSize, uPx, uDist, uPower, uHemRays;
+    varying vec3 vCol;
+    void main(){
+      vec4 mv = modelViewMatrix * vec4(position, 1.);
+      gl_Position = projectionMatrix * mv;
+      vec3 n = normalize(normalMatrix * normalize(position));
+      float f = dot(n, normalize(-mv.xyz));
+      vCol = vec3(0.);
+      float size = 3.4;                                         // big enough that the stipple closes into a solid plate
+      if (aKind > 1.5 && aKind < 2.5) { vCol = vec3(1., .38, .07) * 1.1 * uHemRays * uPower * step(0., f); size = 2.; }
+      if (-mv.z > uDist + .12) size = 0.;                        // the far half of the shell is behind the core
+      gl_PointSize = size * uSize * uPx * .5 * (uDist / -mv.z);
+    }`,
+  fragmentShader: `varying vec3 vCol; void main(){ vec2 c = gl_PointCoord * 2. - 1.; if (dot(c, c) > 1.) discard; gl_FragColor = vec4(vCol, step(dot(vCol, vec3(1.)), 0.)); }`,
+});
+// the light behind the plates: a hot centre and a wide glow, broken into slowly turning beams
+const rayLight = new THREE.Mesh(new THREE.PlaneGeometry(2.3, 2.3), new THREE.ShaderMaterial({
+  uniforms: rayUniforms, depthTest: false, depthWrite: false,
+  vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.); }`,
+  fragmentShader: `
+    varying vec2 vUv; uniform float uTime, uCore, uPower, uEnergy;
+    void main(){
+      vec2 p = vUv * 2. - 1.; float r = length(p), a = atan(p.y, p.x);
+      float beams = .5 + .5 * sin(a * 7. + uTime * .3) * sin(a * 11. - uTime * (.2 + .4 * uEnergy) + 1.3);
+      beams = .08 + pow(beams, 4.) * 1.6;                       // separate shafts, not a fog
+      float light = exp(-r * r * 16.) * .35 + exp(-r * r * 2.6) * .7 * beams;
+      vec3 col = mix(vec3(1., .4, .09), vec3(1., .78, .5), exp(-r * r * 30.)) * light;
+      gl_FragColor = vec4(col * uCore * uPower * smoothstep(1., .75, r), 0.);
+    }`,
+}));
+rayLight.layers.set(1);
+rayLight.renderOrder = -1;                 // the light first, then the plates black it out
+orb.add(rayLight);
+
+const rtOpts = { type: THREE.HalfFloatType, depthBuffer: false };
+const occRT = new THREE.WebGLRenderTarget(1, 1, rtOpts), raysRT = new THREE.WebGLRenderTarget(1, 1, rtOpts);
+const quadCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+const raysMat = new THREE.ShaderMaterial({
+  uniforms: { tOcc: { value: occRT.texture }, uLight: { value: new THREE.Vector2(.5, .7) }, uLen: { value: .85 }, uGain: { value: 1 } },
+  depthTest: false, depthWrite: false,
+  vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0., 1.); }`,
+  fragmentShader: `
+    varying vec2 vUv; uniform sampler2D tOcc; uniform vec2 uLight; uniform float uLen, uGain;
+    void main(){
+      const int N = 72;
+      vec2 d = (vUv - uLight) * uLen / float(N);
+      vec2 uv = vUv - d * fract(sin(dot(vUv, vec2(12.9898, 78.233))) * 43758.5453);   // jittered start: no banding
+      vec3 acc = vec3(0.); float w = 1.;
+      for (int i = 0; i < N; i++) { acc += texture2D(tOcc, uv).rgb * w; w *= .962; uv -= d; }
+      gl_FragColor = vec4(acc * uGain * 3. / float(N), 1.);
+    }`,
+});
+const raysScene = new THREE.Scene();
+raysScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), raysMat));
+bgMat.uniforms.tRays.value = raysRT.texture;
+bgMat.uniforms.tOcc.value = occRT.texture;
+
+const lightPos = new V3();
+function renderRays() {
+  rayLight.quaternion.copy(camera.quaternion);
+  lightPos.set(0, orb.position.y, 0).project(camera);
+  raysMat.uniforms.uLight.value.set(lightPos.x * .5 + .5, lightPos.y * .5 + .5);
+  raysMat.uniforms.uLen.value = tune.rayLength;
+  camera.layers.set(1);
+  renderer.setRenderTarget(occRT); renderer.setClearColor(0x000000, 0); renderer.clear();
+  renderer.render(scene, camera);
+  renderer.setRenderTarget(raysRT);
+  renderer.render(raysScene, quadCam);
+  renderer.setRenderTarget(null);
+  renderer.setClearColor(0x000000, 1);
+  camera.layers.set(0);
+}
+
+const allUniforms = [plateUniforms, coreUniforms, haloUniforms, sparkUniforms, rayUniforms];
 
 // ---------------------------------------------------------------- sizing
 function resize() {
@@ -438,6 +522,9 @@ function resize() {
   renderer.setSize(w, h, false);
   composer.setSize(w, h);
   bloom.resolution.set(w, h);
+  const db = renderer.getDrawingBufferSize(new THREE.Vector2());
+  occRT.setSize(Math.ceil(db.x / 2), Math.ceil(db.y / 2));
+  raysRT.setSize(Math.ceil(db.x / 2), Math.ceil(db.y / 2));
   camera.aspect = w / h;
   camera.setViewOffset(w, h, 0, (.5 - ORB_Y) * h, w, h);   // put the orb above the scarf, not mid-frame
   camera.updateProjectionMatrix();
@@ -463,7 +550,7 @@ function setState(s) {
 document.querySelectorAll('.states button').forEach(b => b.onclick = () => setState(b.dataset.state));
 addEventListener('keydown', e => { const s = { 1: 'off', 2: 'idle', 3: 'working' }[e.key]; if (s) setState(s); });
 
-for (const id of ['open', 'spin', 'core', 'size', 'bloom', 'gap', 'density', 'layout']) {
+for (const id of ['open', 'spin', 'core', 'size', 'bloom', 'rays', 'rayLength', 'hemRays', 'gap', 'density', 'layout']) {
   const el = document.getElementById(id), out = document.getElementById('o-' + id);
   const show = () => { if (out) out.textContent = (+el.value).toFixed(id === 'gap' ? 3 : 2); };
   el.value = tune[id]; show();
@@ -482,7 +569,7 @@ function frame(dt) {
   t += dt;
   const ease = rate => 1 - Math.exp(-dt * rate);
   for (const k in live) live[k] += (target[k] - live[k]) * ease(k === 'open' ? 1.6 : 1.3);
-  for (const p of plates) { p.open += (target.open - p.open) * ease(p.lag * 1.3); placePlate(p, t); }
+  for (const p of plates) { p.open += (target.open - p.open) * ease(p.lag * 1.3); placePlate(p, t); p.occ.matrix.copy(p.obj.matrix); }
 
   turn += dt * live.spin * tune.spin;
   if (!dragging) { dragY *= 1 - ease(1.5); }
@@ -499,6 +586,9 @@ function frame(dt) {
   const flick = .96 + .04 * Math.sin(t * 6.7) * Math.sin(t * 2.3 + 1);
   bgMat.uniforms.uLit.value = Math.min(1, live.lit * Math.min(1, tune.core)) * flick;
   bloom.strength = .6 * tune.bloom * (.5 + .5 * live.power);
+  rayUniforms.uHemRays.value = tune.hemRays;
+  raysMat.uniforms.uGain.value = tune.rays * (.45 + .85 * live.energy);   // faint when idle, full when working
+  renderRays();
   composer.render();
 }
 renderer.setAnimationLoop(() => frame(Math.min(clock.getDelta(), .05)));
