@@ -19,7 +19,7 @@ const DIST = 1 / (Math.tan(FOV * Math.PI / 360) * 2 * ORB_R);   // camera distan
 // ---------------------------------------------------------------- states
 // Each state is a full preset: every value it has is on a slider, and the panel edits the state on screen.
 // Switching state glides every value to the other preset. Presets are saved in this browser.
-const SHARED = { size: 1, bloom: 1, rayLength: .85, rayAmount: 7, hemLength: .85, hemAmount: 1, swirlSpeed: 1, scarfLight: 1,
+const SHARED = { shellOpacity: 0, size: 1, bloom: 1, rayLength: .85, rayAmount: 7, hemLength: .85, hemAmount: 1, swirlSpeed: 1, scarfLight: 1,
   breathRate: 1, breathDepth: 1, pulse: 1, flareEvery: 8, flareLen: 1, flareAmount: .8, ribCount: 3, ribAmount: 1500, ribSpeed: 1, ribBright: 1, ribWidth: 1, ribOrbit: 1, dustAmount: 700, dustSpeed: 1, dustBright: 1 };
 const DEFAULTS = {
   off:     { ...SHARED, breathDepth: .6, pulse: .6, flareEvery: 0, open: 0,   spin: .058, core: .05, rays: .02, hemRays: .45, swirls: 0, power: .16, halo: .12, energy: 0,   lit: 0,    bloom: .7 },
@@ -130,7 +130,7 @@ const common = () => ({
 });
 const pointsMat = (uniforms, vertexShader) => new THREE.ShaderMaterial({
   uniforms, vertexShader, fragmentShader: SPRITE_FRAG,
-  blending: THREE.AdditiveBlending, depthTest: false, depthWrite: false, transparent: true,
+  blending: THREE.AdditiveBlending, depthTest: true, depthWrite: false, transparent: true,
 });
 
 // ---------------------------------------------------------------- shell plates
@@ -222,6 +222,30 @@ function buildPlate(centres, i, gap, density, rnd) {
 }
 
 const plateUniforms = common();
+// Shell opacity: a dark backing just inside each plate writes depth, so whatever is behind the plate (the core,
+// the inner wisps, the far side of the shell, ribbons passing behind) is hidden. It covers only a share of the
+// pixels, set by the opacity, like a screen door: 0 is see-through, 1 is a solid shell. Drawn before everything else.
+const backMat = new THREE.ShaderMaterial({
+  uniforms: { ...plateUniforms, uOpacity: { value: 0 } },
+  depthTest: true, depthWrite: true, transparent: false,
+  vertexShader: `
+    attribute float aKind;
+    uniform float uPx, uDist, uOpacity;
+    void main(){
+      vec4 mv = modelViewMatrix * vec4(normalize(position) * .955, 1.);
+      gl_Position = projectionMatrix * mv;
+      bool part = aKind < .5 || (aKind > 1.5 && aKind < 2.5);          // the cloth and the hem make the solid plate
+      gl_PointSize = part && uOpacity > .001 ? 3.6 * uPx * (uDist / -mv.z) : 0.;
+    }`,
+  fragmentShader: `
+    uniform float uOpacity;
+    void main(){
+      vec2 c = gl_PointCoord * 2. - 1.; if (dot(c, c) > 1.) discard;
+      if (fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453) > uOpacity) discard;
+      gl_FragColor = vec4(0., 0., 0., 1.);
+    }`,
+});
+
 const plateMat = pointsMat(plateUniforms, `
   attribute float aKind, aSeed, aB, aEdge, aPhase;
   uniform float uTime, uPower, uCore, uEnergy, uSize, uPx, uDist, uGain;
@@ -278,7 +302,7 @@ shell.rotation.set(.42, 0, .28);
 let plates = [];
 
 function buildShell() {
-  for (const p of plates) { shell.remove(p.obj, p.occ); p.obj.geometry.dispose(); }
+  for (const p of plates) { shell.remove(p.obj, p.occ, p.back); p.obj.geometry.dispose(); }
   const centres = plateCentres(tune.layout), rnd = mulberry32(11);
   plates = centres.map((_, i) => {
     const { g, c, U, W } = buildPlate(centres, i, tune.gap, tune.density, rnd);
@@ -286,14 +310,16 @@ function buildShell() {
     obj.matrixAutoUpdate = false; obj.frustumCulled = false;
     const occ = new THREE.Points(g, occMat);                 // the same plate, drawn into the ray mask
     occ.matrixAutoUpdate = false; occ.frustumCulled = false; occ.layers.set(1);
-    shell.add(obj, occ);
+    const back = new THREE.Points(g, backMat);              // the same plate as a solid backing (see backMat)
+    back.matrixAutoUpdate = false; back.frustumCulled = false; back.renderOrder = -10;
+    shell.add(obj, occ, back);
     // each plate opens like a petal: it swings out about a hinge on one of its edges
     const ang = rnd() * Math.PI * 2;
     const dir = new V3().addScaledVector(U, Math.cos(ang)).addScaledVector(W, Math.sin(ang));
     let lo = 0, hi = 1.6;
     for (let it = 0; it < 22; it++) { const mid = (lo + hi) / 2; if (margin(new V3().copy(c).addScaledVector(dir, mid).normalize(), centres, i, tune.gap) > 0) lo = mid; else hi = mid; }
     const pivot = new V3().copy(c).addScaledVector(dir, lo).normalize();
-    return { obj, occ, c, pivot, hinge: new V3().crossVectors(c, dir).normalize(),
+    return { obj, occ, back, c, pivot, hinge: new V3().crossVectors(c, dir).normalize(),
              k: rnd(), k2: rnd(), lag: .9 + rnd() * 1.4, open: live.open, phase: rnd() * 6.28 };
   });
 }
@@ -376,7 +402,7 @@ orb.add(coreGroup);
 // the white-hot heart and its starburst, on a camera-facing quad
 const heartMat = new THREE.ShaderMaterial({
   uniforms: coreUniforms,
-  blending: THREE.AdditiveBlending, depthTest: false, depthWrite: false, transparent: true,
+  blending: THREE.AdditiveBlending, depthTest: true, depthWrite: false, transparent: true,
   vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.); }`,
   fragmentShader: `
     varying vec2 vUv; uniform float uTime, uCore, uPower, uEnergy, uLightMul;
@@ -855,6 +881,7 @@ const pace = v => v < .05 ? 'still' : v < .45 ? 'very slow' : v < .8 ? 'slow' : 
 const FMT = {
   num: v => v.toFixed(2),
   open: v => v < .01 ? 'sealed' : `${Math.round(v * 100)} % open`,
+  shellOpacity: v => v < .01 ? 'see-through' : v > .99 ? 'solid' : `${Math.round(v * 100)} % solid`,
   spin: v => `${pace(v / .12)} · ${v.toFixed(2)}`,
   swirls: v => `${Math.round(v)} ${Math.round(v) === 1 ? 'wisp' : 'wisps'}`,
   swirlSpeed: v => `${pace(v)} · ${v.toFixed(2)}`, ribSpeed: v => `${pace(v)} · ${v.toFixed(2)}`, dustSpeed: v => `${pace(v)} · ${v.toFixed(2)}`,
@@ -989,9 +1016,10 @@ function frame(dt) {
   updateBreath(dt);
   for (const k in live) live[k] += (target[k] - live[k]) * ease(k === 'open' ? 1.6 : 1.3);
   const B = applyBoosts(dt);
-  for (const p of plates) { p.open += (target.open - p.open) * ease(p.lag * 1.3); placePlate(p, t); p.occ.matrix.copy(p.obj.matrix); }
+  for (const p of plates) { p.open += (target.open - p.open) * ease(p.lag * 1.3); placePlate(p, t); p.occ.matrix.copy(p.obj.matrix); p.back.matrix.copy(p.obj.matrix); }
 
   tempo = tempoOf(live.energy);
+  backMat.uniforms.uOpacity.value = Math.min(1, Math.max(0, live.shellOpacity));
   turn += dt * live.spin * tempo;
   if (!dragging) { dragY *= 1 - ease(1.5); }
   spin.rotation.set(dragY, turn + dragX, 0);
