@@ -22,23 +22,30 @@
   label input[type=range] { grid-column: 1 / -1; width: 100%; accent-color: #f08a3c; }
   label output { color: #e9e2ea; font-variant-numeric: tabular-nums; }
   select { grid-column: 1 / -1; width: 100%; background: #1c121e; color: inherit; border: 1px solid rgba(255,255,255,.12); border-radius: 6px; padding: 4px; font: inherit; }
-  details summary { cursor: pointer; color: #9a8ea0; margin-top: 6px; }
-  .hint { color: #7d7282; margin-top: 8px; font-size: 12px; }
+  .hint { color: #7d7282; margin-top: 10px; font-size: 12px; }
   label.check { display: flex; align-items: center; gap: 6px; margin: 2px 0 8px; }
   label.check input { accent-color: #f08a3c; margin: 0; }
-  .sliders > summary { margin: 0 0 4px; }
   .states { margin-bottom: 8px; }
+  .panel { max-height: calc(100vh - 24px); overflow: auto; }
+  .group { border-top: 1px solid rgba(255,255,255,.08); }
+  .group > summary { list-style: none; cursor: pointer; padding: 8px 0; color: #e9e2ea; font-weight: 600;
+                     display: flex; justify-content: space-between; }
+  .group > summary::-webkit-details-marker { display: none; }
+  .group > summary::after { content: '+'; color: #9a8ea0; font-weight: 400; }
+  .group[open] > summary::after { content: '–'; }
+  .group[open] { padding-bottom: 6px; }
 
-  /* portrait and narrow screens: the scene on top, the controls below it, and the page scrolls */
+  /* portrait and narrow screens: the scene stays pinned at the top while the controls scroll under it */
   @media (max-aspect-ratio: 4/3) {
-    html, body { height: auto; overflow: auto; }
-    .stage { position: static; display: block; }
+    html { height: auto; overflow: auto; }
+    body { height: auto; overflow: visible; }      /* body must not scroll itself, or the stage can't stick */
+    .stage { position: sticky; top: 0; z-index: 2; display: block; background: #070307; }
     canvas { width: 100vw; height: 66.667vw; }
-    .panel { position: static; width: auto; margin: 12px; backdrop-filter: none; }
+    .panel { position: static; width: auto; margin: 12px; max-height: none; overflow: visible; backdrop-filter: none; }
   }
-  /* short landscape (phones on their side): a smaller panel, sliders folded away until asked for */
+  /* short landscape (phones on their side): a smaller panel */
   @media (min-aspect-ratio: 4/3) and (max-height: 520px) {
-    .panel { top: 8px; right: 8px; width: 200px; padding: 8px 10px; max-height: calc(100vh - 16px); overflow: auto; }
+    .panel { top: 8px; right: 8px; width: 210px; padding: 8px 10px; max-height: calc(100vh - 16px); }
     .panel h1, .hint { display: none; }
   }
   a { color: #d9b09a; }
@@ -61,29 +68,34 @@
     <button data-state="idle" class="on">Idle</button>
     <button data-state="working">Working</button>
   </div>
-  <details class="sliders" id="sliders" open>
-  <summary>Tune</summary>
-  <label>Opening <output id="o-open"></output><input id="open" type="range" min="0" max="1.6" step=".01" value="1"></label>
-  <label>Turn speed <output id="o-spin"></output><input id="spin" type="range" min="0" max="3" step=".01" value="1"></label>
-  <label>Core glow <output id="o-core"></output><input id="core" type="range" min="0" max="2" step=".01" value="1"></label>
-  <label class="check"><input id="lockRays" type="checkbox" checked> Rays follow core glow</label>
-  <label>Particle size <output id="o-size"></output><input id="size" type="range" min=".4" max="2.5" step=".01" value="1"></label>
-  <label>Bloom <output id="o-bloom"></output><input id="bloom" type="range" min="0" max="1.6" step=".005" value="1"></label>
-  <label>Rays <output id="o-rays"></output><input id="rays" type="range" min="0" max="3" step=".01" value="1"></label>
-  <label>Ray length <output id="o-rayLength"></output><input id="rayLength" type="range" min=".2" max="1" step=".01" value=".85"></label>
-  <label>Swirls <output id="o-swirls"></output><input id="swirls" type="range" min="0" max="1.5" step=".01" value="1"></label>
-  <label>Swirl speed <output id="o-swirlSpeed"></output><input id="swirlSpeed" type="range" min="0" max="3" step=".01" value="1"></label>
-  <label>Scarf light <select id="scarfMode"><option value="1">Code: lit by the orb</option><option value="0">Painted: lit / bright images</option></select></label>
-  <label>Scarf light strength <output id="o-scarfLight"></output><input id="scarfLight" type="range" min="0" max="2.5" step=".01" value="1"></label>
-  <label>Rays from hems <output id="o-hemRays"></output><input id="hemRays" type="range" min="0" max="3" step=".01" value="1"></label>
-  <details>
-    <summary>Shell build</summary>
+  <details class="group">
+    <summary>Shell</summary>
+    <label>Opening <output id="o-open"></output><input id="open" type="range" min="0" max="1.6" step=".01" value="1"></label>
+    <label>Turn speed <output id="o-spin"></output><input id="spin" type="range" min="0" max="3" step=".01" value="1"></label>
     <label>Plates <select id="layout"><option value="6">6 (curved squares)</option><option value="12">12 (pentagons)</option></select></label>
     <label>Plate gap <output id="o-gap"></output><input id="gap" type="range" min=".005" max=".12" step=".005" value=".03"></label>
     <label>Density <output id="o-density"></output><input id="density" type="range" min=".3" max="2" step=".05" value="1"></label>
   </details>
+  <details class="group">
+    <summary>Core &amp; rays</summary>
+    <label>Core glow <output id="o-core"></output><input id="core" type="range" min="0" max="2" step=".01" value="1"></label>
+    <label class="check"><input id="lockRays" type="checkbox" checked> Rays follow core glow</label>
+    <label>Rays <output id="o-rays"></output><input id="rays" type="range" min="0" max="3" step=".01" value="1"></label>
+    <label>Ray length <output id="o-rayLength"></output><input id="rayLength" type="range" min=".2" max="1" step=".01" value=".85"></label>
+    <label>Rays from hems <output id="o-hemRays"></output><input id="hemRays" type="range" min="0" max="3" step=".01" value="1"></label>
   </details>
-  <script>if (matchMedia('(min-aspect-ratio: 4/3) and (max-height: 520px)').matches) document.getElementById('sliders').open = false;</script>
+  <details class="group">
+    <summary>Particles &amp; glow</summary>
+    <label>Particle size <output id="o-size"></output><input id="size" type="range" min=".4" max="2.5" step=".01" value="1"></label>
+    <label>Swirls <output id="o-swirls"></output><input id="swirls" type="range" min="0" max="1.5" step=".01" value="1"></label>
+    <label>Swirl speed <output id="o-swirlSpeed"></output><input id="swirlSpeed" type="range" min="0" max="3" step=".01" value="1"></label>
+    <label>Bloom <output id="o-bloom"></output><input id="bloom" type="range" min="0" max="1.6" step=".005" value="1"></label>
+  </details>
+  <details class="group">
+    <summary>Scarf</summary>
+    <label>Scarf light <select id="scarfMode"><option value="1">Code: lit by the orb</option><option value="0">Painted: lit / bright images</option></select></label>
+    <label>Scarf light strength <output id="o-scarfLight"></output><input id="scarfLight" type="range" min="0" max="2.5" step=".01" value="1"></label>
+  </details>
   <div class="hint">Keys 1 · 2 · 3 switch state. Drag to turn the orb. <a href="../index.html">All versions</a></div>
 </div>
 </body>
