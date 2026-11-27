@@ -8,7 +8,7 @@ Reads assets/source/rosie-scarf-unlit.png and rosie-scarf-bright-lit.png, writes
 (Two files rather than one with alpha: browsers may wipe the colour of pixels whose alpha is 0.)
 
 The normals are guessed from the shading of the unlit art: a blurred pass for the big folds, a sharp pass for
-the twill weave. A real normal map from ChatGPT can replace scarf-normal.webp later; keep the same 1536×1024 framing.
+the twill weave. If assets/source/rosie-scarf-normal.png exists (ChatGPT's, same 1536×1024 framing), it is used instead.
 """
 from pathlib import Path
 import numpy as np
@@ -40,6 +40,13 @@ nx *= solid; ny *= solid
 nz = np.ones_like(nx)
 n = np.stack([nx, ny, nz], -1)
 n /= np.linalg.norm(n, axis=-1, keepdims=True)
+
+# ChatGPT's painted normal map (same framing, green = up) wins when it's there; the guess above is the fallback
+painted = SRC / 'rosie-scarf-normal.png'
+if painted.exists():
+    n = np.asarray(Image.open(painted).convert('RGB'), np.float32) / 255 * 2 - 1
+    n /= np.maximum(np.linalg.norm(n, axis=-1, keepdims=True), 1e-4)
+    print('using', painted.name)
 
 reach = gaussian_filter(np.clip(bright - unlit, 0, None), 5)
 reach /= max(np.percentile(reach[alpha > .5], 99), 1e-4)
