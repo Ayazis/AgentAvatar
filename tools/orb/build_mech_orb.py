@@ -492,21 +492,52 @@ for i in range(12):
 scale = 1.0
 GAP, PT = 0.965, 0.08                                 # small seam between plates; plate thickness
 
-def plate(name, pts, parent):
-    """Flat sharp plate in its own frame (z = outward normal), lightly chamfered, raised gunmetal inset,
-    rivets near the corners and a glowing outline on the outer face."""
-    o = mesh_obj(name, pts, [tuple(range(len(pts)))], M_PLATE, parent)
+def sphere_patch(pts, R0, Rs, k=1.0, sub=14):
+    """Curved pentagon on a sphere: the flat polygon `pts` (local, z = 0, centre at origin, sphere centre at
+    (0, 0, -R0)) shrunk by k, subdivided, and pushed onto radius Rs. Returns verts and faces."""
+    O = Vector((0, 0, -R0)); vs, fs, idx = [], [], {}
+    def P(q):
+        key = (round(q.x, 6), round(q.y, 6))
+        if key not in idx:
+            idx[key] = len(vs); vs.append(O + (q - O).normalized() * Rs)
+        return idx[key]
+    n = len(pts)
+    for e in range(n):
+        A, B = pts[e] * k, pts[(e + 1) % n] * k
+        g = [[P(A * (i / sub) * (1 - j / max(i, 1)) + B * (i / sub) * (j / max(i, 1))) if i else P(Vector()) for j in range(i + 1)]
+             for i in range(sub + 1)]
+        for i in range(sub):
+            for j in range(i + 1):
+                fs.append((g[i][j], g[i + 1][j], g[i + 1][j + 1]))
+                if j < i: fs.append((g[i][j], g[i + 1][j + 1], g[i][j + 1]))
+    return vs, fs
+
+def plate(name, pts, R0, parent):
+    """Curved steel plate: a pentagon of the sphere, thick inward, chamfered edges, a raised darker inset that
+    follows the curve, rivets near the corners and a faint glowing outline."""
+    Rs = max(q.length for q in pts) ** 2 / (2 * R0) + R0 / 2 if False else (R0 ** 2 + max(q.length for q in pts) ** 2) ** 0.5
+    vs, fs = sphere_patch(pts, R0, Rs)
+    o = mesh_obj(name, vs, fs, M_PLATE, parent)
     o.data.materials.append(M_PLATE_BACK)
-    o.data.shade_flat(); solidify(o, PT, -1); sm = o.modifiers['solid']; sm.material_offset = 1; sm.material_offset_rim = 0
+    if o.data.polygons[0].normal.z < 0: o.data.flip_normals()
+    solidify(o, PT, -1); sm = o.modifiers['solid']; sm.material_offset = 1; sm.material_offset_rim = 0
     bevel(o, 0.008, 1, angle=30)
-    ins = mesh_obj(name + '_inset', [q * 0.62 for q in pts], [tuple(range(len(pts)))], M_PLATE_IN, o)
-    ins.data.shade_flat(); ins.location = (0, 0, 0.012); solidify(ins, 0.024); bevel(ins, 0.006, 1, angle=30)
+    vs, fs = sphere_patch(pts, R0, Rs + 0.012, k=0.62)
+    ins = mesh_obj(name + '_inset', vs, fs, M_PLATE_IN, o)
+    if ins.data.polygons[0].normal.z < 0: ins.data.flip_normals()
+    solidify(ins, 0.024); bevel(ins, 0.006, 1, angle=30)
+    O = Vector((0, 0, -R0))
     for q in pts:
-        rivet(o, q * 0.8, (0, 0, 1), 0.03, M_RIVET)
+        d = (q * 0.8 - O).normalized()
+        rivet(o, O + d * Rs, d, 0.03, M_RIVET)
+    edge = []
+    for e in range(len(pts)):
+        A, B = pts[e] * 0.985, pts[(e + 1) % len(pts)] * 0.985
+        edge += [O + (A.lerp(B, t / 16) - O).normalized() * (Rs + 0.002) for t in range(16)]
     cu = bpy.data.curves.new(name + '_glow', 'CURVE'); cu.dimensions = '3D'; cu.bevel_depth = 0.005
-    sp = cu.splines.new('POLY'); sp.points.add(len(pts)); sp.use_cyclic_u = False
-    for i, q in enumerate(pts + [pts[0]]):
-        sp.points[i].co = (q.x * 0.985, q.y * 0.985, 0.002, 1)
+    sp = cu.splines.new('POLY'); sp.points.add(len(edge)); 
+    for i, q in enumerate(edge + [edge[0]]):
+        sp.points[i].co = (q.x, q.y, q.z, 1)
     cu.materials.append(M_EDGEGLOW)
     link(bpy.data.objects.new(name + '_glow', cu), o)
     return o
@@ -527,7 +558,7 @@ for pts in panels:
     drive(h, 'location', 0, f'{c.x}+{n.x}*{var}*({S["open"]}+{S["open_p"]}*(0.5+0.5*sin(T*tau*{max(1, S["beats"] // 2)}+{k * 0.7})))')
     drive(h, 'location', 1, f'{c.y}+{n.y}*{var}*({S["open"]}+{S["open_p"]}*(0.5+0.5*sin(T*tau*{max(1, S["beats"] // 2)}+{k * 0.7})))')
     drive(h, 'location', 2, f'{c.z}+{n.z}*{var}*({S["open"]}+{S["open_p"]}*(0.5+0.5*sin(T*tau*{max(1, S["beats"] // 2)}+{k * 0.7})))')
-    plate(f'plate{k}', local, h)
+    plate(f'plate{k}', local, c.length, h)
     k += 1
 print('shell plates:', k)
 
