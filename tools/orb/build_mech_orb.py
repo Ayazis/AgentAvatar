@@ -22,10 +22,10 @@ TAU = math.tau
 
 # per state: gear turns per loop, gimbal swing, blade opening (rest + pulse), core glow (base, pulse, pulses per loop)
 STATES = {
-    'off':      dict(gear=0, gimbal=0.0, open=0.0,  open_p=0.0,  glow=0.15, glow_p=0.0, beats=1),
-    'idle':     dict(gear=1, gimbal=0.5, open=0.05, open_p=0.03, glow=1.0,  glow_p=0.3, beats=2),
-    'thinking': dict(gear=3, gimbal=1.0, open=0.25, open_p=0.05, glow=1.5,  glow_p=0.4, beats=6),
-    'talking':  dict(gear=2, gimbal=0.7, open=0.45, open_p=0.25, glow=2.0,  glow_p=0.8, beats=12),
+    'off':      dict(gear=0, ring=0, open=28, open_p=0, shell=0, glow=0.15, glow_p=0.0, beats=1),
+    'idle':     dict(gear=1, ring=1, open=55, open_p=2, shell=1, glow=1.0,  glow_p=0.3, beats=2),
+    'thinking': dict(gear=3, ring=2, open=62, open_p=3, shell=2, glow=1.5,  glow_p=0.4, beats=6),
+    'talking':  dict(gear=2, ring=1, open=68, open_p=8, shell=1, glow=2.0,  glow_p=0.8, beats=12),
 }
 S = STATES[STATE]
 
@@ -425,7 +425,7 @@ def face_part(name, stem, diameter, thick, parent, back_stem=None, relief=0.02, 
     return o
 
 # -- large gear behind the bearing: 40 teeth (one at 0°, every 9°), 7 spokes
-RG = 0.84
+RG = 0.8                                    # small enough that the pinion clears the turning brass ring
 gearL = empty('GearL', mech, loc=(0, 0, -0.16))
 GEAR_PHASE = math.radians(5.5)            # puts a tooth gap toward the pinion at -35°
 drive(gearL, 'rotation_euler', 2, f'{GEAR_PHASE}-T*tau*{S["gear"]}')
@@ -457,19 +457,12 @@ drive(CORE_K.inputs[1], 'default_value', -1, f'6*{pulse}')
 drive(CORE_NZ.inputs['W'], 'default_value', -1, 'sin(T*tau)*0.6') if 'W' in CORE_NZ.inputs else None
 if hasattr(CORE_NZ, 'noise_dimensions'): CORE_NZ.noise_dimensions = '4D'
 
-# -- gimbal: bronze ring swings inside the steel ring; inner edges are 76% / 75% of their radius
+# -- brass ring: turns full circle round the core on an axle through two rods (inner edge 76% of radius)
 gim = empty('Gimbal', root, rot=(math.radians(20), math.radians(-15), math.radians(10)))
-outerG = empty('OuterG', gim)
-drive(outerG, 'rotation_euler', 0, f'1.05+{0.45 * S["gimbal"]}*sin(T*tau)')
-R2 = 1.74                                   # bronze: inner 1.32, clears the pinion (reach ~1.3)
-R1 = 2.42                                   # steel: inner 1.81, clears the bronze ring
-innerG = empty('InnerG', outerG)
-drive(innerG, 'rotation_euler', 1, f'0.7+{0.6 * S["gimbal"]}*sin(T*tau*2+0.8)')
-face_part('ring_bronze', 'bronze-ring-front', 2 * R2, 0.12, innerG, relief=0.025, N=640, loc=(0, 0, 0.06))
-# v2 steel is a cloudy grey; pull it toward gunmetal and lean on Blender's brushing for the steel look
-face_part('ring_steel', 'steel-ring-front', 2 * R1, 0.14, outerG, relief=0.02, N=640, loc=(0, 0, 0.07),
-          tint_to=(0.62, 0.58, 0.54), tint_k=0.35, brush=0.4, rough_lo=0.1, rough_hi=0.35)
-W1 = R1 * (1 - 0.749)
+R2 = 1.74                                   # inner edge 1.32 clears the pinion (reach ~1.28)
+ringG = empty('RingG', gim)
+drive(ringG, 'rotation_euler', 0, f'1.1+T*tau*{S["ring"]}')
+face_part('ring_bronze', 'bronze-ring-front', 2 * R2, 0.12, ringG, relief=0.025, N=640, loc=(0, 0, 0.06))
 
 def axle(parent, direction, r0, r1, rad, mat, collars=()):
     d = Vector(direction).normalized()
@@ -478,64 +471,58 @@ def axle(parent, direction, r0, r1, rad, mat, collars=()):
     for z, cr, cd in collars:
         cc = cyl('collar', cr, cd, M_BRASS, e, loc=(0, 0, z), verts=32); bevel(cc, 0.01, 2)
     return e
-# pins between the rings (ride with the outer ring), and the outer ring's axle out to the shell
-for s in (1, -1):
-    axle(outerG, (0, s, 0), R2 - 0.05, R1 - W1 + 0.05, 0.05, M_STEEL, [((R2 + R1 - W1) / 2, 0.08, 0.06)])
-    axle(gim, (s, 0, 0), R1 - 0.1, 2.85, 0.06, M_STEEL,
-         [(R1 + 0.07, 0.1, 0.08), (2.65, 0.085, 0.07), (2.79, 0.11, 0.09)])
+for sgn in (1, -1):                         # the ring's axle: rods from the ring out to the shell
+    axle(gim, (sgn, 0, 0), R2 - 0.04, 2.3, 0.06, M_STEEL,
+         [(R2 + 0.07, 0.1, 0.08), (2.08, 0.085, 0.07), (2.24, 0.11, 0.09)])
 
-# -- shell blades: five curved sphere segments around the view axis, each with a rolled lip, opening outward
-def blade(name, R, span, lat0, lat1, mat, parent, n=72, m=14, hook=0.0):
-    """Sphere segment centred on +X. Longitude runs in the XZ plane (the view plane, since the camera looks
-    along +Y), latitude toward ±Y (negative = toward the camera). Tapers to points at both ends, sharper at u=1."""
-    vs, fs, lip = [], [], []
-    for i in range(n + 1):
-        u = i / n
-        lon = (u - 0.5) * span
-        taper = math.sin(math.pi * min(1.0, u * 1.15)) ** 0.75 * (1 - 0.55 * u) + 0.02   # broad heel, sharp tip
-        mid = (lat0 + lat1) / 2 + hook * (u - 0.35) ** 2 * 2.5      # ends sweep inward: a crescent on screen
-        half = (lat1 - lat0) / 2 * taper
-        for j in range(m + 1):
-            v = j / m
-            lat = mid - half + 2 * half * v
-            x = R * math.cos(lat) * math.cos(lon); z = R * math.cos(lat) * math.sin(lon); y = R * math.sin(lat)
-            vs.append((x, y, z))
-        lip.append(vs[-(m + 1)])        # front (lat-min) edge gets the rolled lip
-    for i in range(n):
-        for j in range(m):
-            a = i * (m + 1) + j
-            fs.append((a, a + m + 1, a + m + 2, a + 1))
-    o = mesh_obj(name, vs, fs, mat, parent)
-    solidify(o, 0.1, 1); bevel(o, 0.02, 3, angle=30)
-    sub = o.modifiers.new('sub', 'SUBSURF'); sub.levels = 1; sub.render_levels = 2
-    cu = bpy.data.curves.new(name + '_lip', 'CURVE'); cu.dimensions = '3D'; cu.bevel_depth = 0.085; cu.bevel_resolution = 4
-    cu.use_fill_caps = True
-    sp = cu.splines.new('POLY'); sp.points.add(len(lip) - 1)
-    for i, q in enumerate(lip):
-        t = math.sin(math.pi * i / (len(lip) - 1)) ** 0.5     # lip thins out at the tips
-        sp.points[i].co = (*(Vector(q) * (1 - 0.012)), 1); sp.points[i].radius = max(t, 0.05)
-    cu.materials.append(M_BLADE)
-    link(bpy.data.objects.new(name + '_lip', cu), o)
+# -- shell: an opened capsule of 8 flat hexagonal plates round the view axis. Each plate hinges on its outer edge;
+# at 0° the plates close into a flat octagonal lid in front of the core, opening swings their inner edges back.
+M_EDGEGLOW, _ = glow_mat('EdgeGlow', (1.0, 0.42, 0.1), 5)
+
+def hex_outline(L, D, k=1.0, cx=0.0):
+    pts = [(0, 0.32 * L), (0, -0.32 * L), (0.4 * D, -0.5 * L), (D, -0.22 * L), (D, 0.22 * L), (0.4 * D, 0.5 * L)]
+    return [(cx + (x - cx) * k, y * k, 0) for x, y, _ in [(*p, 0) for p in pts]]
+
+def plate(name, L, D, t, parent):
+    """Flat hexagonal plate: hinge edge along local y at x = 0, reaching inward to x = D. Sharp, lightly
+    chamfered edges, a raised gunmetal inset, two rivets on the hinge edge and a glowing inner edge."""
+    o = mesh_obj(name, hex_outline(L, D), [tuple(range(6))], M_BLADE, parent)
+    o.data.shade_flat(); solidify(o, t); bevel(o, 0.008, 1, angle=30)
+    ins = mesh_obj(name + '_inset', hex_outline(L, D, 0.68, 0.5 * D), [tuple(range(6))], M_STEEL, o)
+    ins.data.shade_flat(); ins.location = (0, 0, t / 2 + 0.012); solidify(ins, 0.024); bevel(ins, 0.006, 1, angle=30)
+    for y in (-0.22 * L, 0.22 * L):
+        rivet(o, (0.08, y, t / 2), (0, 0, 1), 0.03, M_BRASS)
+    edge = hex_outline(L, D)[2:]                     # the inner outline: tip, inner edge, tip
+    cu = bpy.data.curves.new(name + '_glow', 'CURVE'); cu.dimensions = '3D'; cu.bevel_depth = 0.01
+    sp = cu.splines.new('POLY'); sp.points.add(len(edge) - 1)
+    for i, q in enumerate(edge):
+        sp.points[i].co = (q[0], q[1], t / 2 + 0.002, 1)
+    cu.materials.append(M_EDGEGLOW)
+    link(bpy.data.objects.new(name + '_glow', cu), o)
     return o
 
-shell = empty('Shell', root, rot=(math.radians(-6), 0, 0))
-drive(shell, 'rotation_euler', 1, '0.06*sin(T*tau)')         # slow sway round the view axis
-blade_specs = [  # angle round the view axis (deg, 0 = right, 90 = up), span (rad), lat range (rad), hook
-    (150, 1.6, -0.72, -0.1, -0.5), (78, 1.0, -0.65, -0.12, -0.6), (18, 0.75, -0.7, -0.17, -0.7),
-    (-50, 1.45, -0.8, -0.08, -0.5), (-125, 1.1, -0.65, -0.12, -0.55)]
-open_expr = f'({S["open"]}+{S["open_p"]}*(0.5+0.5*sin(T*tau*{max(1, S["beats"] // 2)})))'
-for k, (phi, span, l0, l1, hook) in enumerate(blade_specs):
-    h = empty(f'bladeH{k}', shell, rot=(0, -math.radians(phi), 0))   # rotate +X round Y to angle phi
-    piv = empty(f'bladeO{k}', h)
-    drive(piv, 'location', 0, f'0.35*{open_expr}*{1 + 0.12 * math.sin(k * 2.1)}')   # push outward
-    drive(piv, 'rotation_euler', 2, f'0.3*{open_expr}')                          # and swing back like a petal
-    blade(f'blade{k}', 2.8, span, l0, l1, M_BLADE, piv, hook=hook)
+shell = empty('Shell', root)
+drive(shell, 'rotation_euler', 1, f'T*tau*{S["shell"]}/8')       # 8 identical plates: 1/8 turn loops seamlessly
+RS, NP, PL, PD, PT = 2.45, 8, 1.72, 0.95, 0.07
+open_expr = f'radians({S["open"]}+{S["open_p"]}*sin(T*tau*{max(1, S["beats"] // 2)}))'
+for k in range(NP):
+    phi = TAU * (k + 0.5) / NP
+    d = Vector((math.cos(phi), 0, math.sin(phi)))
+    xa = -d                                        # inward
+    ya = Vector((math.sin(phi), 0, -math.cos(phi)))  # along the hinge, so the plate's front faces the camera
+    za = xa.cross(ya)
+    from mathutils import Matrix
+    basis = Matrix((xa, ya, za)).transposed()
+    hinge = empty(f'hinge{k}', shell, loc=tuple(RS * d + Vector((0, -0.15, 0))), rot=basis.to_euler())
+    swing = empty(f'swing{k}', hinge)
+    drive(swing, 'rotation_euler', 1, open_expr)  # +y rotation sends the inner edge backward
+    plate(f'plate{k}', PL, PD, PT, swing)
 
 # ---------------- camera, lights, world ----------------
 cam_d = bpy.data.cameras.new('cam'); cam_d.lens = 85
-cam_d.dof.use_dof = True; cam_d.dof.focus_distance = 14.8; cam_d.dof.aperture_fstop = 5.6
+cam_d.dof.use_dof = True; cam_d.dof.focus_distance = 13.6; cam_d.dof.aperture_fstop = 5.6
 cam = link(bpy.data.objects.new('cam', cam_d))
-cam.location = (0, -15.2, 1.4); cam.rotation_euler = (math.radians(84.75), 0, 0)
+cam.location = (0, -14, 1.3); cam.rotation_euler = (math.radians(84.7), 0, 0)
 sc.camera = cam
 
 def area(name, loc, color, energy, size):
