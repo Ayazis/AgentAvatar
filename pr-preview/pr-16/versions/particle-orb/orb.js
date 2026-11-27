@@ -25,7 +25,7 @@ const STATES = {
 const live = { ...STATES.idle };
 let target = STATES.idle;
 
-const tune = { open: 1, spin: 1, core: 1, size: 1, bloom: 1, rays: 1, rayLength: .85, hemRays: 1, swirls: 1, swirlSpeed: 1, scarfMode: 1, scarfLight: 1, layout: 6, gap: .03, density: 1 };
+const tune = { open: 1, spin: 1, core: 1, size: 1, bloom: 1, rays: 1, rayLength: .85, rayAmount: 1, hemRays: 1, hemLength: .85, hemAmount: 1, swirls: 1, swirlSpeed: 1, scarfMode: 1, scarfLight: 1, layout: 6, gap: .03, density: 1 };
 
 // ---------------------------------------------------------------- renderer
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
@@ -533,15 +533,18 @@ swirls.add(buildSwirls());
 orb.add(swirls);
 
 // ---------------------------------------------------------------- light shafts
-// The core's light is drawn into a small mask, with the front plates as black silhouettes over it and their hems
-// as thin bright lines. Smearing that mask outward from the core gives shafts that only escape through the gaps
-// between the plates, and streaks that run on from the glowing hems.
-const rayUniforms = { ...common(), uHemRays: { value: 1 } };
+// Two kinds of rays, each from its own small mask:
+//  - core rays: the core's light with the front plates as black silhouettes over it. Smeared outward from the core,
+//    it gives shafts that only escape through the gaps between the plates.
+//  - hem rays: just the glowing hems of the front plates, as thin bright lines. Smeared outward, they give streaks
+//    that run on from the plate edges.
+// Each has its own amount, intensity and length, and fades out over a distance tied to its length.
+const rayUniforms = { ...common(), uHemPass: { value: 0 }, uHemAmount: { value: 1 }, uRayAmount: { value: 1 } };
 const occMat = new THREE.ShaderMaterial({
   uniforms: rayUniforms, depthTest: false, depthWrite: false,
   vertexShader: `
-    attribute float aKind;
-    uniform float uSize, uPx, uDist, uPower, uHemRays;
+    attribute float aKind, aPhase;
+    uniform float uSize, uPx, uDist, uPower, uHemPass, uHemAmount;
     varying vec3 vCol;
     void main(){
       vec4 mv = modelViewMatrix * vec4(position, 1.);
@@ -550,7 +553,14 @@ const occMat = new THREE.ShaderMaterial({
       float f = dot(n, normalize(-mv.xyz));
       vCol = vec3(0.);
       float size = 3.4;                                         // big enough that the stipple closes into a solid plate
-      if (aKind > 1.5 && aKind < 2.5) { vCol = vec3(1., .38, .07) * 1.1 * uHemRays * uPower * step(0., f); size = 2.; }
+      bool hem = aKind > 1.5 && aKind < 2.5;
+      if (uHemPass > .5) {
+        // hem pass: only the hems, and only the stretches that Amount lets through (all of it at 1, short bits near 0)
+        float g = .5 + .5 * sin(aPhase * 7.3 + sin(aPhase * 2.1) * 2.);
+        float on = smoothstep(1. - uHemAmount - .08, 1. - uHemAmount + .08, g);
+        vCol = hem ? vec3(1., .38, .07) * 1.1 * uPower * step(0., f) * on : vec3(0.);
+        size = hem ? 2. : 0.;
+      } else if (hem) size = 2.;                                 // core pass: the hems are part of the plate, black
       if (-mv.z > uDist + .12) size = 0.;                        // the far half of the shell is behind the core
       gl_PointSize = size * uSize * uPx * .5 * (uDist / -mv.z);
     }`,
@@ -561,10 +571,11 @@ const rayLight = new THREE.Mesh(new THREE.PlaneGeometry(2.3, 2.3), new THREE.Sha
   uniforms: rayUniforms, depthTest: false, depthWrite: false,
   vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.); }`,
   fragmentShader: `
-    varying vec2 vUv; uniform float uTime, uCore, uPower, uEnergy;
+    varying vec2 vUv; uniform float uTime, uCore, uPower, uEnergy, uRayAmount;
     void main(){
       vec2 p = vUv * 2. - 1.; float r = length(p), a = atan(p.y, p.x);
-      float beams = .5 + .5 * sin(a * 7. + uTime * .3) * sin(a * 11. - uTime * (.2 + .4 * uEnergy) + 1.3);
+      float k1 = floor(2. + 5. * uRayAmount), k2 = floor(3. + 8. * uRayAmount);    // Amount: a few broad shafts .. many thin ones
+      float beams = .5 + .5 * sin(a * k1 + uTime * .3) * sin(a * k2 - uTime * (.2 + .4 * uEnergy) + 1.3);
       beams = .08 + pow(beams, 4.) * 1.6;                       // separate shafts, not a fog
       float light = exp(-r * r * 16.) * .35 + exp(-r * r * 2.6) * .7 * beams;
       vec3 col = mix(vec3(1., .4, .09), vec3(1., .78, .5), exp(-r * r * 30.)) * light;
@@ -576,21 +587,29 @@ rayLight.renderOrder = -1;                 // the light first, then the plates b
 orb.add(rayLight);
 
 const rtOpts = { type: THREE.HalfFloatType, depthBuffer: false };
-const occRT = new THREE.WebGLRenderTarget(1, 1, rtOpts), raysRT = new THREE.WebGLRenderTarget(1, 1, rtOpts);
+const occRT = new THREE.WebGLRenderTarget(1, 1, rtOpts), hemRT = new THREE.WebGLRenderTarget(1, 1, rtOpts), raysRT = new THREE.WebGLRenderTarget(1, 1, rtOpts);
 const quadCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
 const raysMat = new THREE.ShaderMaterial({
-  uniforms: { tOcc: { value: occRT.texture }, uLight: { value: new THREE.Vector2(.5, .7) }, uLen: { value: .85 }, uGain: { value: 1 } },
+  uniforms: { tOcc: { value: occRT.texture }, tHem: { value: hemRT.texture }, uLight: { value: new THREE.Vector2(.5, .7) },
+              uLen: { value: .85 }, uGain: { value: 1 }, uHemLen: { value: .85 }, uHemGain: { value: 1 } },
   depthTest: false, depthWrite: false,
   vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0., 1.); }`,
   fragmentShader: `
-    varying vec2 vUv; uniform sampler2D tOcc; uniform vec2 uLight; uniform float uLen, uGain;
-    void main(){
-      const int N = 72;
-      vec2 d = (vUv - uLight) * uLen / float(N);
-      vec2 uv = vUv - d * fract(sin(dot(vUv, vec2(12.9898, 78.233))) * 43758.5453);   // jittered start: no banding
+    varying vec2 vUv; uniform sampler2D tOcc, tHem; uniform vec2 uLight; uniform float uLen, uGain, uHemLen, uHemGain;
+    const int N = 64;
+    // smear one mask outward from the core, over len of the way to it, then fade with distance from the shell:
+    // the shorter the rays, the sooner they fade, so they end softly instead of at a hard edge
+    vec3 smear(sampler2D t, float len, float jit){
+      vec2 d = (vUv - uLight) * len / float(N);
+      vec2 uv = vUv - d * jit;
       vec3 acc = vec3(0.); float w = 1.;
-      for (int i = 0; i < N; i++) { acc += texture2D(tOcc, uv).rgb * w; w *= .962; uv -= d; }
-      gl_FragColor = vec4(acc * uGain * 3. / float(N), 1.);
+      for (int i = 0; i < N; i++) { acc += texture2D(t, uv).rgb * w; w *= .962; uv -= d; }
+      float out_ = max(0., length((vUv - uLight) * vec2(1.5, 1.)) - .2);   // distance past the shell, in stage heights
+      return acc * 3. / float(N) * exp(-out_ / (len * .55 + .02));
+    }
+    void main(){
+      float jit = fract(sin(dot(vUv, vec2(12.9898, 78.233))) * 43758.5453);   // jittered start: no banding
+      gl_FragColor = vec4(smear(tOcc, uLen, jit) * uGain + smear(tHem, uHemLen, jit) * uHemGain, 1.);
     }`,
 });
 const raysScene = new THREE.Scene();
@@ -624,10 +643,18 @@ function renderRays() {
   lightPos.set(0, orb.position.y, 0).project(camera);
   raysMat.uniforms.uLight.value.set(lightPos.x * .5 + .5, lightPos.y * .5 + .5);
   raysMat.uniforms.uLen.value = tune.rayLength;
+  raysMat.uniforms.uHemLen.value = tune.hemLength;
+  rayUniforms.uHemAmount.value = tune.hemAmount;
+  rayUniforms.uRayAmount.value = tune.rayAmount;
   bgMat.uniforms.uLightUV.value.copy(raysMat.uniforms.uLight.value);
   camera.layers.set(1);
   renderer.setRenderTarget(occRT); renderer.setClearColor(0x000000, 0); renderer.clear();
+  rayUniforms.uHemPass.value = 0; rayLight.visible = true;
   renderer.render(scene, camera);
+  renderer.setRenderTarget(hemRT); renderer.clear();
+  rayUniforms.uHemPass.value = 1; rayLight.visible = false;
+  renderer.render(scene, camera);
+  rayLight.visible = true;
   renderer.setRenderTarget(raysRT);
   renderer.render(raysScene, quadCam);
   renderer.setRenderTarget(null);
@@ -645,6 +672,7 @@ function resize() {
   bloom.resolution.set(w, h);
   const db = renderer.getDrawingBufferSize(new THREE.Vector2());
   occRT.setSize(Math.ceil(db.x / 2), Math.ceil(db.y / 2));
+  hemRT.setSize(Math.ceil(db.x / 2), Math.ceil(db.y / 2));
   lightRT.setSize(Math.ceil(db.x / 4), Math.ceil(db.y / 4));
   raysRT.setSize(Math.ceil(db.x / 2), Math.ceil(db.y / 2));
   camera.aspect = w / h;
@@ -673,7 +701,7 @@ function setState(s) {
 document.querySelectorAll('.states button').forEach(b => b.onclick = () => setState(b.dataset.state));
 addEventListener('keydown', e => { const s = { 1: 'off', 2: 'idle', 3: 'working' }[e.key]; if (s) setState(s); });
 
-for (const id of ['open', 'spin', 'core', 'size', 'bloom', 'rays', 'rayLength', 'hemRays', 'swirls', 'swirlSpeed', 'scarfMode', 'scarfLight', 'gap', 'density', 'layout']) {
+for (const id of ['open', 'spin', 'core', 'size', 'bloom', 'rays', 'rayLength', 'rayAmount', 'hemRays', 'hemLength', 'hemAmount', 'swirls', 'swirlSpeed', 'scarfMode', 'scarfLight', 'gap', 'density', 'layout']) {
   const el = document.getElementById(id), out = document.getElementById('o-' + id);
   const show = () => { if (out) out.textContent = (+el.value).toFixed(id === 'gap' ? 3 : 2); };
   el.value = tune[id]; show();
@@ -726,15 +754,15 @@ function frame(dt) {
   bgMat.uniforms.uBloomK.value = bloom.strength;
   bgMat.uniforms.uCode.value = tune.scarfMode;
   bloom.strength = .45 * Math.pow(tune.bloom, 1.6) * (.5 + .5 * live.power);   // gentle near 1, lower ceiling
-  rayUniforms.uHemRays.value = tune.hemRays;
   swirlT += dt * (.25 + .75 * live.energy) * tune.swirlSpeed;
   swirlUniforms.uSwirlT.value = swirlT;
   swirlUniforms.uSwirl.value = live.swirl * tune.swirls;
   raysMat.uniforms.uGain.value = tune.rays * (.45 + .85 * live.energy);   // faint when idle, full when working
+  raysMat.uniforms.uHemGain.value = tune.hemRays * (.45 + .85 * live.energy);
   renderRays();
   renderLightBuffer();
   composer.render();
 }
 renderer.setAnimationLoop(() => frame(Math.min(clock.getDelta(), .05)));
 // for capture and testing: step the animation by hand (a hidden tab gets no animation frames)
-window.rosieOrb = { setState, debug: { bloom, bgMat, renderer }, step(seconds, fps = 30) { for (let i = 0; i < seconds * fps; i++) frame(1 / fps); } };
+window.rosieOrb = { setState, debug: { bloom, bgMat, renderer, raysRT, raysMat }, step(seconds, fps = 30) { for (let i = 0; i < seconds * fps; i++) frame(1 / fps); } };

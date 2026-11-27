@@ -26,6 +26,8 @@
   label.check { display: flex; align-items: center; gap: 6px; margin: 2px 0 8px; }
   label.check input { accent-color: #f08a3c; margin: 0; }
   .states { margin-bottom: 8px; }
+  .sub { margin: 10px 0 2px; color: #e9e2ea; font-size: 12px; }
+  .sub span { color: #7d7282; margin-left: 4px; }
   .panel { max-height: calc(100vh - 24px); overflow: auto; }
   .group { border-top: 1px solid rgba(255,255,255,.08); }
   .group > summary { list-style: none; cursor: pointer; padding: 8px 0; color: #e9e2ea; font-weight: 600;
@@ -79,10 +81,15 @@
   <details class="group">
     <summary>Core &amp; rays</summary>
     <label>Core glow <output id="o-core"></output><input id="core" type="range" min="0" max="2" step=".01" value="1"></label>
-    <label class="check"><input id="lockRays" type="checkbox" checked> Rays follow core glow</label>
-    <label>Rays <output id="o-rays"></output><input id="rays" type="range" min="0" max="3" step=".01" value="1"></label>
-    <label>Ray length <output id="o-rayLength"></output><input id="rayLength" type="range" min=".2" max="1" step=".01" value=".85"></label>
-    <label>Rays from hems <output id="o-hemRays"></output><input id="hemRays" type="range" min="0" max="3" step=".01" value="1"></label>
+    <label class="check"><input id="lockRays" type="checkbox" checked> Core rays follow core glow</label>
+    <div class="sub">Core rays <span>through the gaps</span></div>
+    <label>Amount <output id="o-rayAmount"></output><input id="rayAmount" type="range" min="0" max="2" step=".01" value="1"></label>
+    <label>Intensity <output id="o-rays"></output><input id="rays" type="range" min="0" max="3" step=".01" value="1"></label>
+    <label>Length <output id="o-rayLength"></output><input id="rayLength" type="range" min=".1" max="1" step=".01" value=".85"></label>
+    <div class="sub">Hem rays <span>from the plate edges</span></div>
+    <label>Amount <output id="o-hemAmount"></output><input id="hemAmount" type="range" min="0" max="1" step=".01" value="1"></label>
+    <label>Intensity <output id="o-hemRays"></output><input id="hemRays" type="range" min="0" max="3" step=".01" value="1"></label>
+    <label>Length <output id="o-hemLength"></output><input id="hemLength" type="range" min=".1" max="1" step=".01" value=".85"></label>
   </details>
   <details class="group">
     <summary>Particles &amp; glow</summary>
