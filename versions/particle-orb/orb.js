@@ -17,15 +17,26 @@ const FOV = 30;
 const DIST = 1 / (Math.tan(FOV * Math.PI / 360) * 2 * ORB_R);   // camera distance that gives that radius
 
 // ---------------------------------------------------------------- states
-const STATES = {
-  off:     { open: 0,   power: .16, core: .05, spin: .03, energy: 0,   lit: 0,   halo: .12, swirl: 0 },
-  idle:    { open: .32, power: 1,   core: 1,   spin: .12, energy: .25, lit: 1,   halo: .7,  swirl: .45 },
-  working: { open: 1,   power: 1.1, core: 1.55, spin: .38, energy: 1,  lit: 1.75, halo: 1.15, swirl: 1 },
+// Each state is a full preset: every value it has is on a slider, and the panel edits the state on screen.
+// Switching state glides every value to the other preset. Presets are saved in this browser.
+const SHARED = { size: 1, bloom: 1, rayLength: .85, rayAmount: 1, hemLength: .85, hemAmount: 1, swirlSpeed: 1, scarfLight: 1 };
+const DEFAULTS = {
+  off:     { ...SHARED, open: 0,   spin: .03, core: .05, rays: .02, hemRays: .45, swirls: 0,   power: .16, halo: .12, energy: 0,   lit: 0,    bloom: .7 },
+  idle:    { ...SHARED, open: .32, spin: .12, core: 1,   rays: .66, hemRays: .66, swirls: .45, power: 1,   halo: .7,  energy: .25, lit: 1 },
+  working: { ...SHARED, open: 1,   spin: .38, core: 1.55, rays: 2,  hemRays: 1.3, swirls: 1,   power: 1.1, halo: 1.15, energy: 1,  lit: 1.75 },
 };
-const live = { ...STATES.idle };
-let target = STATES.idle;
+const KEYS = Object.keys(DEFAULTS.idle);
+const STORE = 'rosie-particle-orb-presets-v1';
+const saved = (() => { try { return JSON.parse(localStorage.getItem(STORE)) || {}; } catch { return {}; } })();
+const presets = {};
+for (const st in DEFAULTS) presets[st] = { ...DEFAULTS[st], ...(saved.presets?.[st] || {}) };
+let editing = 'idle';
+const live = { ...presets.idle };
+let target = presets.idle;
 
-const tune = { open: 1, spin: 1, core: 1, size: 1, bloom: 1, rays: 1, rayLength: .85, rayAmount: 1, hemRays: 1, hemLength: .85, hemAmount: 1, swirls: 1, swirlSpeed: 1, scarfMode: 1, scarfLight: 1, layout: 6, gap: .03, density: 1 };
+// settings that belong to the build, not to a state
+const tune = { scarfMode: 1, layout: 6, gap: .03, density: 1, ...(saved.tune || {}) };
+const save = () => { try { localStorage.setItem(STORE, JSON.stringify({ presets, tune })); } catch {} };
 
 // ---------------------------------------------------------------- renderer
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
@@ -282,7 +293,7 @@ function buildShell() {
 
 const m1 = new THREE.Matrix4(), m2 = new THREE.Matrix4(), m3 = new THREE.Matrix4();
 function placePlate(p, t) {
-  const o = p.open * tune.open;
+  const o = p.open;
   const pushOut = o * (.03 + .1 * p.k) + .006 * Math.sin(t * .9 + p.phase) * live.power;
   const flap = o * (.26 + .38 * p.k) + .02 * Math.sin(t * .7 + p.phase) * o;
   const twirl = o * .3 * (p.k2 - .5);
@@ -626,7 +637,7 @@ function renderLightBuffer() {
   // At a quarter of the pixels the sprites are about a pixel already, so their size can't change there. Draw them at
   // size 1 and scale their light by how much light the visible sprites give at the slider's size instead: area
   // grows with size², and above 1 the sprites dim by size^-1.4 (see SPRITE_FRAG), so bigger always means more light.
-  const sz = tune.size, sizeLight = sz < 1 ? sz * sz : Math.pow(sz, .6);
+  const sz = live.size, sizeLight = sz < 1 ? sz * sz : Math.pow(sz, .6);
   for (const u of allUniforms) { u.uPx.value = lightPx / 4; u.uSize.value = 1; }
   // what throws light on the scarf: the plates are big and steady, so they count less; the moving parts count more
   plateUniforms.uLightMul.value = .3 * sizeLight; coreUniforms.uLightMul.value = .7 * sizeLight; haloUniforms.uLightMul.value = 1.8 * sizeLight;
@@ -642,10 +653,10 @@ function renderRays() {
   rayLight.quaternion.copy(camera.quaternion);
   lightPos.set(0, orb.position.y, 0).project(camera);
   raysMat.uniforms.uLight.value.set(lightPos.x * .5 + .5, lightPos.y * .5 + .5);
-  raysMat.uniforms.uLen.value = tune.rayLength;
-  raysMat.uniforms.uHemLen.value = tune.hemLength;
-  rayUniforms.uHemAmount.value = tune.hemAmount;
-  rayUniforms.uRayAmount.value = tune.rayAmount;
+  raysMat.uniforms.uLen.value = live.rayLength;
+  raysMat.uniforms.uHemLen.value = live.hemLength;
+  rayUniforms.uHemAmount.value = live.hemAmount;
+  rayUniforms.uRayAmount.value = live.rayAmount;
   bgMat.uniforms.uLightUV.value.copy(raysMat.uniforms.uLight.value);
   camera.layers.set(1);
   renderer.setRenderTarget(occRT); renderer.setClearColor(0x000000, 0); renderer.clear();
@@ -695,34 +706,59 @@ canvas.addEventListener('pointermove', e => {
 canvas.addEventListener('pointerup', () => dragging = false);
 
 function setState(s) {
-  target = STATES[s];
+  editing = s; target = presets[s];
   document.querySelectorAll('.states button').forEach(b => b.classList.toggle('on', b.dataset.state === s));
+  document.getElementById('editing').textContent = s[0].toUpperCase() + s.slice(1);
+  showPreset();
 }
 document.querySelectorAll('.states button').forEach(b => b.onclick = () => setState(b.dataset.state));
 addEventListener('keydown', e => { const s = { 1: 'off', 2: 'idle', 3: 'working' }[e.key]; if (s) setState(s); });
 
-for (const id of ['open', 'spin', 'core', 'size', 'bloom', 'rays', 'rayLength', 'rayAmount', 'hemRays', 'hemLength', 'hemAmount', 'swirls', 'swirlSpeed', 'scarfMode', 'scarfLight', 'gap', 'density', 'layout']) {
+const sliders = {};
+for (const id of [...KEYS, ...Object.keys(tune)]) {
   const el = document.getElementById(id), out = document.getElementById('o-' + id);
+  if (!el) continue;
   const show = () => { if (out) out.textContent = (+el.value).toFixed(id === 'gap' ? 3 : 2); };
-  el.value = tune[id]; show();
-  el.show = show;
+  el.show = show; sliders[id] = el;
   el.addEventListener('input', () => {
-    tune[id] = +el.value; show();
-    if (id === 'gap' || id === 'density' || id === 'layout') { clearTimeout(el.t); el.t = setTimeout(buildShell, 120); }
-    if (lockRays.checked && (id === 'core' || id === 'rays')) linkRays(id);
+    const v = +el.value; show();
+    if (id in tune) {                                            // build settings: the same for every state
+      tune[id] = v;
+      if (id === 'gap' || id === 'density' || id === 'layout') { clearTimeout(el.t); el.t = setTimeout(buildShell, 120); }
+    } else {                                                     // the state on screen: change it now, no glide
+      presets[editing][id] = v; live[id] = v;
+      if (lockRays.checked && (id === 'core' || id === 'rays')) linkRays(id);
+    }
+    save();
   });
+}
+function showPreset() {
+  for (const id in sliders) { sliders[id].value = id in tune ? tune[id] : presets[editing][id]; sliders[id].show(); }
+  rayRatio = presets[editing].rays / Math.max(presets[editing].core, .01);
 }
 
 // The core's light is what makes the rays, so by default the two sliders move together, keeping the ratio they
-// had when the lock was switched on. Unlocked, each works alone (the rays then ignore the Core glow slider).
+// had when the lock was switched on (or when the state was picked). Unlocked, each works alone.
 const lockRays = document.getElementById('lockRays');
-let rayRatio = tune.rays / Math.max(tune.core, .01);
-lockRays.addEventListener('change', () => { rayRatio = tune.rays / Math.max(tune.core, .01); });
+let rayRatio = 1;
+lockRays.addEventListener('change', () => { rayRatio = presets[editing].rays / Math.max(presets[editing].core, .01); });
 function linkRays(changed) {
-  const core = document.getElementById('core'), rays = document.getElementById('rays');
-  if (changed === 'core') { tune.rays = Math.min(+rays.max, tune.core * rayRatio); rays.value = tune.rays; rays.show(); }
-  else { tune.core = Math.min(+core.max, tune.rays / Math.max(rayRatio, .01)); core.value = tune.core; core.show(); }
+  const p = presets[editing], core = sliders.core, rays = sliders.rays;
+  if (changed === 'core') { p.rays = live.rays = Math.min(+rays.max, p.core * rayRatio); rays.value = p.rays; rays.show(); }
+  else { p.core = live.core = Math.min(+core.max, p.rays / Math.max(rayRatio, .01)); core.value = p.core; core.show(); }
 }
+
+document.getElementById('resetState').onclick = () => { presets[editing] = { ...DEFAULTS[editing] }; target = presets[editing]; Object.assign(live, target); showPreset(); save(); };
+document.getElementById('resetAll').onclick = () => {
+  for (const st in DEFAULTS) presets[st] = { ...DEFAULTS[st] };
+  target = presets[editing]; Object.assign(live, target); showPreset(); save();
+};
+document.getElementById('copySettings').onclick = async e => {
+  const text = JSON.stringify({ presets, tune }, null, 2);
+  try { await navigator.clipboard.writeText(text); e.target.textContent = 'Copied'; } catch { console.log(text); e.target.textContent = 'In console'; }
+  setTimeout(() => e.target.textContent = 'Copy settings', 1500);
+};
+showPreset();
 
 // ---------------------------------------------------------------- frame loop
 buildShell();
@@ -735,7 +771,7 @@ function frame(dt) {
   for (const k in live) live[k] += (target[k] - live[k]) * ease(k === 'open' ? 1.6 : 1.3);
   for (const p of plates) { p.open += (target.open - p.open) * ease(p.lag * 1.3); placePlate(p, t); p.occ.matrix.copy(p.obj.matrix); }
 
-  turn += dt * live.spin * tune.spin;
+  turn += dt * live.spin;
   if (!dragging) { dragY *= 1 - ease(1.5); }
   spin.rotation.set(dragY, turn + dragX, 0);
   coreGroup.rotation.y = -turn * .6 + dragX;
@@ -744,21 +780,21 @@ function frame(dt) {
   heart.quaternion.copy(camera.quaternion);
 
   for (const u of allUniforms) {
-    u.uTime.value = t; u.uPower.value = live.power; u.uCore.value = live.core * tune.core;
-    u.uEnergy.value = live.energy; u.uSize.value = tune.size; u.uHalo.value = live.halo;
+    u.uTime.value = t; u.uPower.value = live.power; u.uCore.value = live.core;
+    u.uEnergy.value = live.energy; u.uSize.value = live.size; u.uHalo.value = live.halo;
   }
-  rayUniforms.uCore.value = live.core;                         // the Rays slider alone sets how strong the shafts are
+  rayUniforms.uCore.value = 1;                                 // the Intensity slider alone sets how strong the shafts are
   const flick = .96 + .04 * Math.sin(t * 6.7) * Math.sin(t * 2.3 + 1);
-  bgMat.uniforms.uLit.value = Math.min(2, live.lit * tune.core) * flick;
-  bgMat.uniforms.uLightGain.value = 1.1 * tune.scarfLight;
+  bgMat.uniforms.uLit.value = Math.min(2, live.lit) * flick;
+  bgMat.uniforms.uLightGain.value = 1.1 * live.scarfLight;
   bgMat.uniforms.uBloomK.value = bloom.strength;
   bgMat.uniforms.uCode.value = tune.scarfMode;
-  bloom.strength = .45 * Math.pow(tune.bloom, 1.6) * (.5 + .5 * live.power);   // gentle near 1, lower ceiling
-  swirlT += dt * (.25 + .75 * live.energy) * tune.swirlSpeed;
+  bloom.strength = .45 * Math.pow(live.bloom, 1.6);                // gentle near 1, lower ceiling
+  swirlT += dt * (.25 + .75 * live.energy) * live.swirlSpeed;
   swirlUniforms.uSwirlT.value = swirlT;
-  swirlUniforms.uSwirl.value = live.swirl * tune.swirls;
-  raysMat.uniforms.uGain.value = tune.rays * (.45 + .85 * live.energy);   // faint when idle, full when working
-  raysMat.uniforms.uHemGain.value = tune.hemRays * (.45 + .85 * live.energy);
+  swirlUniforms.uSwirl.value = live.swirls;
+  raysMat.uniforms.uGain.value = live.rays;
+  raysMat.uniforms.uHemGain.value = live.hemRays;
   renderRays();
   renderLightBuffer();
   composer.render();
