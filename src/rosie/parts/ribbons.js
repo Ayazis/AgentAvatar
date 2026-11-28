@@ -2,9 +2,11 @@
 // dust.js): the same motion, computed on the CPU each frame, then drawn as the orb's glowing sprites. The console
 // works in picture-height units around the orb; here 1 unit is the shell radius, so positions are divided by ORB_R,
 // y points up and z toward the camera. Colours are the orb's orange and blue instead of the jacket's rose.
+// The plates are walls (see barrier.js): each particle follows its path, but where the path runs through a plate it
+// is held at the plate's face, flows along it to a seam and catches up with the path on the far side.
 import * as THREE from 'three';
 import { ORB_R, aliveOf } from '../config.js';
-import { commonUniforms, pointsMaterial, mulberry32 } from '../sprites.js';
+import { commonUniforms, pointsMaterial, mulberry32, randomDir } from '../sprites.js';
 
 export const MAX_RIBBON_PARTICLES = 9000;   // per ribbon
 export const MAX_DUST_PARTICLES = 5000;
@@ -34,8 +36,14 @@ const BANDS = [
   { tx: .55, tz: 1.3, speed: .32, phase: 4.2, head: 4, col: [6, 2] },
 ];
 
+const lean = rnd => { const d = randomDir(rnd); return { bx: d.x, by: d.y, bz: d.z, seen: -9 }; };   // see Barrier.follow
+
 export class Ribbons {
-  constructor() {
+  #raw = new Float64Array(3 * Math.max(RIB_TRAIL, DUST_TRAIL));
+
+  /** @param barrier the plates as walls (see barrier.js) */
+  constructor(barrier) {
+    this.barrier = barrier;
     const cap = MAX_RIBBON_PARTICLES * BANDS.length * RIB_TRAIL + MAX_DUST_PARTICLES * DUST_TRAIL;
     this.pos = new Float32Array(cap * 3); this.size = new Float32Array(cap); this.bright = new Float32Array(cap); this.col = new Float32Array(cap);
     this.geometry = new THREE.BufferGeometry();
@@ -58,6 +66,9 @@ export class Ribbons {
       sp: (.35 + R() * .5) * (R() < .15 ? -1 : 1), lift: (R() - .5) * .08, breathe: R() < .3, bph: R() * 6.28,
       s: 1 + R() * 2, a: .35 + .45 * R(), c: [0, 0, 1, 2, 4, 5, 6][(R() * 7) | 0], k: R() * 6.28, d: R(),
     });
+    const L = mulberry32(91);
+    for (const p of this.ribPts) Object.assign(p, lean(L));
+    for (const p of this.dustPts) Object.assign(p, lean(L));
     this.yaw = 0; this.dustClock = 0;
   }
 
@@ -65,6 +76,8 @@ export class Ribbons {
   update({ dt, t, live, tempo, breath, pulse }) {
     const alive = aliveOf(live.power);   // Off: none, Idle and Working: all
     this.n = 0;
+    this.catchUp = 1 - Math.exp(-dt * 3);
+    this.slide = dt * .5 * Math.max(.3, tempo);
     this.#ribbons(dt, t, live, tempo, breath, pulse, alive);
     this.#dust(dt, t, live, tempo, pulse, alive);
     const o = this.n;
@@ -74,11 +87,20 @@ export class Ribbons {
     }
   }
 
-  // one sprite, in picture units (y down, z behind) → orb units
-  #put(x, y, z, size, a, c) {
-    const o = this.n++, u = 1 / ORB_R;
-    this.pos[o * 3] = x * u; this.pos[o * 3 + 1] = -y * u; this.pos[o * 3 + 2] = -z * u;
-    this.size[o] = size; this.bright[o] = a; this.col[o] = c;
+  // one point of particle p's trail on its path, in picture units (y down, z behind) → orb units
+  #raw3(k, x, y, z) { const u = 1 / ORB_R, r = this.#raw; r[k * 3] = x * u; r[k * 3 + 1] = -y * u; r[k * 3 + 2] = -z * u; }
+
+  // move particle p's head along its path, held back by the plates, and draw its trail of `trail` points behind
+  // the head, shifted with it; each point's look comes from look(k, out)
+  #draw(p, trail, look) {
+    const r = this.#raw, B = this.barrier;
+    B.follow(p, r[0], r[1], r[2], this.catchUp, this.slide);
+    const dx = B.x - r[0], dy = B.y - r[1], dz = B.z - r[2];
+    for (let k = 0; k < trail; k++) {
+      const o = this.n++;
+      this.pos[o * 3] = r[k * 3] + dx; this.pos[o * 3 + 1] = r[k * 3 + 1] + dy; this.pos[o * 3 + 2] = r[k * 3 + 2] + dz;
+      look(k, o);
+    }
   }
 
   // ribbons: comets of particles on tilted orbits, wrapping in front of and behind the shell
@@ -115,8 +137,11 @@ export class Ribbons {
         const y1 = y * rb.cx - z * rb.sx, z1 = y * rb.sx + z * rb.cx;
         const X = x * rb.cz - y1 * rb.sz, Y = x * rb.sz + y1 * rb.cz;
         const XX = X * cgy + z1 * sgy, ZZ = -X * sgy + z1 * cgy;
-        this.#put(XX * S, -Y * S, ZZ * S, p.s * 1.9 * (1 - k * .18), 1.5 * vis * arc * ribA * p.a * tw * (k ? .5 / k : 1), p.c);
+        this.#raw3(k, XX * S, -Y * S, ZZ * S);
       }
+      this.#draw(p, RIB_TRAIL, (k, o) => {
+        this.size[o] = p.s * 1.9 * (1 - k * .18); this.bright[o] = 1.5 * vis * arc * ribA * p.a * tw * (k ? .5 / k : 1); this.col[o] = p.c;
+      });
     }
   }
 
@@ -139,8 +164,9 @@ export class Ribbons {
         const lx = Math.cos(a) * r, lz = Math.sin(a) * r;
         const y1 = -lz * si, z1 = lz * ci;
         const x = lx * cn + z1 * sn, z = -lx * sn + z1 * cn;
-        this.#put(x, y1 + p.lift + .015 * Math.sin(t * .7 + p.k), z, p.s * 1.7 * (1 - k * .22), bright * (k ? .38 / k : 1), p.c);
+        this.#raw3(k, x, y1 + p.lift + .015 * Math.sin(t * .7 + p.k), z);
       }
+      this.#draw(p, DUST_TRAIL, (k, o) => { this.size[o] = p.s * 1.7 * (1 - k * .22); this.bright[o] = bright * (k ? .38 / k : 1); this.col[o] = p.c; });
     }
   }
 }

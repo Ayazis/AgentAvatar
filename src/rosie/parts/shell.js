@@ -183,8 +183,16 @@ export class Shell {
   build({ layout, gap, density }, open) {
     for (const p of this.plates) { this.group.remove(p.obj, p.occ, p.back); p.obj.geometry.dispose(); }
     const centres = plateCentres(layout), rnd = mulberry32(11);
+    this.gap = gap;
     this.plates = centres.map((_, i) => {
       const { g, c, U, W } = buildPlate(centres, i, gap, density, rnd);
+      // how wide the plate is: the angle from its centre to its farthest corner (for the barrier, see barrier.js)
+      let alpha = 0;
+      for (let s = 0; s < 48; s++) {
+        const a = s / 48 * Math.PI * 2, dx = Math.cos(a), dy = Math.sin(a);
+        alpha = Math.max(alpha, Math.atan(reach(r => new V3().copy(c).addScaledVector(U, dx * r).addScaledVector(W, dy * r).normalize(),
+                                                 p => margin(p, centres, i, gap) > 0)));
+      }
       const obj = this.#plateObject(g, this.material);
       const occ = this.#plateObject(g, this.occMaterial);    // the same plate, drawn into the ray mask
       occ.layers.set(1);
@@ -196,7 +204,7 @@ export class Shell {
       const dir = new V3().addScaledVector(U, Math.cos(ang)).addScaledVector(W, Math.sin(ang));
       const d = reach(r => new V3().copy(c).addScaledVector(dir, r).normalize(), p => margin(p, centres, i, gap) > 0);
       const pivot = new V3().copy(c).addScaledVector(dir, d).normalize();
-      return { obj, occ, back, c, pivot, hinge: new V3().crossVectors(c, dir).normalize(),
+      return { obj, occ, back, c, alpha, pivot, hinge: new V3().crossVectors(c, dir).normalize(),
                k: rnd(), k2: rnd(), lag: .9 + rnd() * 1.4, open: open, phase: rnd() * 6.28 };
     });
   }

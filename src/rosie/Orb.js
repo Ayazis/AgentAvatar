@@ -20,6 +20,7 @@ import { Rays } from './rays.js';
 import { LightBuffer } from './lightBuffer.js';
 import { createScarfPass } from './scarf.js';
 import { Breath, Boosts } from './motion.js';
+import { Barrier } from './barrier.js';
 
 export class Orb {
   t = 0;
@@ -42,14 +43,17 @@ export class Orb {
     this.camera = new THREE.PerspectiveCamera(FOV, 1.5, .1, 100);
     this.camera.position.set(0, 0, DIST);
 
-    // the parts, and how much each lights the scarf (see LightBuffer)
+    // the parts, and how much each lights the scarf (see LightBuffer). The plates are walls the moving parts
+    // can't pass through (see barrier.js); the swirls are drawn in the shell's turning frame.
+    this.spin = new THREE.Group();
+    this.barrier = new Barrier();
     this.rays = new Rays();
     this.shell = new Shell(this.rays.occMaterial);
     this.core = new Core();
-    this.halo = new Halo();
-    this.sparks = new Sparks();
-    this.swirls = new Swirls();
-    this.ribbons = new Ribbons();
+    this.halo = new Halo(this.barrier);
+    this.sparks = new Sparks(this.barrier);
+    this.swirls = new Swirls(this.barrier, this.spin);
+    this.ribbons = new Ribbons(this.barrier);
     this.lightLayers = [
       { uniforms: this.shell.uniforms, weight: .3 }, { uniforms: this.core.uniforms, weight: .7 },
       { uniforms: this.halo.uniforms, weight: 1.8 }, { uniforms: this.sparks.uniforms, weight: 3 },
@@ -59,9 +63,8 @@ export class Orb {
 
     // the scene graph: orb (floats, breathes) > spin (turns, drags) > shell (tilt) > plates
     this.orb = new THREE.Group();
-    this.spin = new THREE.Group();
-    this.spin.add(this.shell.group);
-    this.orb.add(this.spin, ...this.core.objects, this.halo.group, this.sparks.object, this.swirls.object, this.ribbons.object, this.rays.light);
+    this.spin.add(this.shell.group, this.swirls.object);
+    this.orb.add(this.spin, ...this.core.objects, this.halo.group, this.sparks.object, this.ribbons.object, this.rays.light);
     this.scene.add(this.orb);
 
     // the orb is drawn alone on black and bloomed, then added over the scarf, so the scarf itself never blooms
@@ -84,7 +87,7 @@ export class Orb {
   }
 
   /** Rebuild the plates after a change to the layout, gap or density. */
-  rebuildShell() { this.shell.build(this.settings.tune, this.settings.live.open); }
+  rebuildShell() { this.shell.build(this.settings.tune, this.settings.live.open); this.barrier.setShell(this.shell); }
 
   /** Greet her: a pulse through everything. */
   tap() { this.boosts.tap(); }
@@ -140,6 +143,8 @@ export class Orb {
     this.orb.position.y = .025 * Math.sin(t * .8);
     this.orb.scale.setScalar(1 + .014 * breath + .05 * pulse);                 // the shell swells as she breathes in
     this.core.heart.quaternion.copy(this.camera.quaternion);
+    this.barrier.solid = !!+tune.solidPlates;
+    this.barrier.update(this.shell, this.spin);                                // where the plates are, as walls
 
     for (const u of this.allUniforms) {
       u.uTime.value = t; u.uPower.value = live.power; u.uCore.value = live.core * (1 + .14 * breath);
@@ -155,6 +160,7 @@ export class Orb {
     su.uCode.value = tune.scarfMode;
     this.bloom.strength = .45 * Math.pow(live.bloom, 1.6) * (1 + .1 * breath);  // gentle near 1, lower ceiling
 
+    this.sparks.update(f);
     this.swirls.update(f);
     this.ribbons.update(f);
     this.rays.update(f);
