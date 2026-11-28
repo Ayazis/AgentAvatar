@@ -12,7 +12,9 @@ export class Settings {
     }
     this.presets = {};
     for (const st in DEFAULTS) this.presets[st] = { ...DEFAULTS[st], ...(saved.presets?.[st] || {}) };
-    this.tune = { ...TUNE_DEFAULTS, flareOn: { ...TUNE_DEFAULTS.flareOn }, ...(saved.tune || {}) };
+    const { layout, ...tune } = saved.tune || {};   // 'layout' (6 or 12 plates) became 'count'
+    if (layout && tune.count === undefined) tune.count = layout;
+    this.tune = { ...TUNE_DEFAULTS, flareOn: { ...TUNE_DEFAULTS.flareOn }, ...tune };
     this.editing = 'idle';                     // the state on screen, which the panel edits
     this.live = { ...this.presets.idle };      // the values drawn this frame
   }

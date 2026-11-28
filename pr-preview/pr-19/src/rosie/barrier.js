@@ -1,7 +1,7 @@
 // The plates as solid walls. Nothing passes through a plate: swirls, sparks, ribbons, dust and the halo can only
 // cross the shell through the gaps between the plates (and the wide openings when the plates swing open).
 //
-// A plate is a cap of the unit sphere in its own rest frame (see shell.js): the directions where its margin is
+// A plate is a patch of the unit sphere in its own rest frame (see plates.js): the directions where its margin is
 // > 0, with an outer face at R_OUT and an inner face at R_IN. Each plate moves rigidly (it turns, swings out on
 // its hinge and lifts off), so a point is tested by taking it into the plate's rest frame.
 //
@@ -13,41 +13,38 @@
 //    plate as a reference point: the halo dust as it is, a swirl strand like the wisp's centre line (see keepSide).
 // The plate's edge is soft (EDGE_LO .. EDGE_HI of margin), so the walls start and stop smoothly at the seams.
 import * as THREE from 'three';
+import { MAX_PLATES, MARGIN_GLSL } from './plates.js';
 
-export const MAX_PLATES = 12;
-const K = .022;                    // the soft max that rounds the plate corners (as shell.js margin)
 const R_OUT = 1.045, R_IN = .925;  // the faces, with room for the sprites: cloth and hem reach 1.016, the inner face .955
 const EDGE_LO = -.004, EDGE_HI = .03;
-const FACING = .45;                // a plate is never more than ~63 degrees wide, so skip plates facing away
+const FACING = .45;                // a plate is never more than ~56 degrees wide, so skip plates facing away
 
 const f = v => v.toFixed(4);
 
 /** GLSL for the shader particles: the plate uniforms and keepSide(p, ref). */
 export const BARRIER_GLSL = `
   #define MAX_PLATES ${MAX_PLATES}
-  uniform mat4 uPlateIn[MAX_PLATES], uPlateOut[MAX_PLATES];   // this layer's frame -> each plate's rest frame, and back
+  uniform mat4 uPlateIn[MAX_PLATES];      // this layer's frame -> each plate's rest frame (a rigid move)
   uniform vec3 uCentres[MAX_PLATES];
-  uniform int uPlateCount;
+  uniform vec4 uPlateShape[MAX_PLATES];   // each plate's U axis, and its shape's radius
+  uniform int uPlateCount, uShape;
   uniform float uGap, uSolid;
-  float plateMargin(vec3 n, int i){
-    float s = 0.;
-    for (int j = 0; j < MAX_PLATES; j++) { if (j >= uPlateCount) break; if (j != i) s += exp((dot(n, uCentres[j]) - 1.) / ${f(K)}); }
-    return dot(n, uCentres[i]) - (1. + ${f(K)} * log(max(s, 1e-30))) - uGap;
-  }
+  ${MARGIN_GLSL}
   // p, kept on the same side of every plate as ref: pushed out to the face where a plate covers it
   vec3 keepSide(vec3 p, vec3 ref){
     if (uSolid < .5) return p;
     for (int i = 0; i < MAX_PLATES; i++) {
       if (i >= uPlateCount) break;
-      vec3 q = (uPlateIn[i] * vec4(p, 1.)).xyz;
-      bool outside = length((uPlateIn[i] * vec4(ref, 1.)).xyz) >= 1.;
+      mat4 M = uPlateIn[i];
+      vec3 q = (M * vec4(p, 1.)).xyz;
+      bool outside = length((M * vec4(ref, 1.)).xyz) >= 1.;
       float r = length(q), surf = outside ? ${f(R_OUT)} : ${f(R_IN)};
       if (outside ? r >= surf : r <= surf) continue;
       vec3 n = q / max(r, 1e-5);
       if (dot(n, uCentres[i]) < ${f(FACING)}) continue;
       float cov = smoothstep(${f(EDGE_LO)}, ${f(EDGE_HI)}, plateMargin(n, i));
       if (cov <= 0.) continue;
-      p = (uPlateOut[i] * vec4(n * mix(r, surf, cov), 1.)).xyz;
+      p = transpose(mat3(M)) * (n * mix(r, surf, cov) - M[3].xyz);   // back out of the rest frame
     }
     return p;
   }`;
@@ -69,7 +66,8 @@ export class Barrier {
     this.toOrb = []; this.fromOrb = [];       // per plate, as column-major arrays for the CPU
     this.bounds = [];                         // per plate: a sphere round it in orb space, { x, y, z, r2 }
     this.shared = { uCentres: { value: Array.from({ length: MAX_PLATES }, () => new THREE.Vector3()) },
-                    uPlateCount: { value: 0 }, uGap: { value: 0 }, uSolid: { value: 1 } };
+                    uPlateShape: { value: Array.from({ length: MAX_PLATES }, () => new THREE.Vector4()) },
+                    uPlateCount: { value: 0 }, uShape: { value: 0 }, uGap: { value: 0 }, uSolid: { value: 1 } };
     this.layers = [];                         // { object, uniforms }: shader layers and the frame they draw in
     this.#m = new THREE.Matrix4(); this.#mi = new THREE.Matrix4();
   }
@@ -80,18 +78,23 @@ export class Barrier {
    * orb), or null when it draws in the orb's own frame.
    */
   uniformsFor(object = null) {
-    const uniforms = { uPlateIn: { value: identity() }, uPlateOut: { value: identity() }, ...this.shared };
+    const uniforms = { uPlateIn: { value: identity() }, ...this.shared };
     this.layers.push({ object, uniforms });
     return uniforms;
   }
 
   /** Take the plates from a freshly built shell (see Shell.build). */
   setShell(shell) {
+    const layout = this.layout = shell.layout;
     this.count = Math.min(MAX_PLATES, shell.plates.length);
     this.gap = shell.gap;
-    this.centres = shell.plates.slice(0, this.count).map(p => p.c.clone());
-    this.centres.forEach((c, i) => this.shared.uCentres.value[i].copy(c));
+    this.centres = layout.centres;
+    this.centres.forEach((c, i) => {
+      this.shared.uCentres.value[i].copy(c);
+      const U = layout.U[i]; this.shared.uPlateShape.value[i].set(U.x, U.y, U.z, layout.R[i]);
+    });
     this.shared.uPlateCount.value = this.count;
+    this.shared.uShape.value = layout.shape;
     this.shared.uGap.value = this.gap;
     // a sphere round each plate's slab, in its rest frame: centre on the plate's axis at `mid`, radius `rho`
     this.rest = shell.plates.slice(0, this.count).map(p => {
@@ -122,10 +125,7 @@ export class Barrier {
     }
     for (const { object, uniforms } of this.layers) {
       if (object) { object.updateMatrix(); mi.copy(object.matrix).invert(); } else mi.identity();
-      for (let i = 0; i < this.count; i++) {
-        const out = uniforms.uPlateOut.value[i].multiplyMatrices(mi, toOrb[i]);   // rest -> the layer's frame
-        uniforms.uPlateIn.value[i].copy(out).invert();
-      }
+      for (let i = 0; i < this.count; i++) uniforms.uPlateIn.value[i].multiplyMatrices(mi, toOrb[i]).invert();   // the layer's frame -> rest
     }
   }
 
@@ -149,17 +149,22 @@ export class Barrier {
       let ux = qx / r1, uy = qy / r1, uz = qz / r1;
       const c = this.centres[i], dc = ux * c.x + uy * c.y + uz * c.z;
       if (dc < FACING) continue;
-      // the margin (as in shell.js), and the pull towards the nearest neighbour, which is towards the nearest seam
-      let s = 0, gx = 0, gy = 0, gz = 0;
-      for (let j = 0; j < this.count; j++) {
-        if (j === i) continue;
-        const cj = this.centres[j], w = Math.exp((ux * cj.x + uy * cj.y + uz * cj.z - 1) / K);
-        s += w; gx += w * cj.x; gy += w * cj.y; gz += w * cj.z;
-      }
-      const cov = smooth(EDGE_LO, EDGE_HI, dc - (1 + K * Math.log(Math.max(s, 1e-300))) - this.gap);
+      const cov = smooth(EDGE_LO, EDGE_HI, this.layout.margin(ux, uy, uz, i, this.gap));
       if (cov <= 0) continue;
       const r = r1 + (surf - r1) * cov;
-      let tx = gx / s - c.x + bx * .35, ty = gy / s - c.y + by * .35, tz = gz / s - c.z + bz * .35;
+      // which way the nearest seam is: towards the nearest neighbouring plate for cells; for a shape (round,
+      // polygon, petal), straight out from the plate's centre, which is near enough
+      let gx = 0, gy = 0, gz = 0;
+      if (this.layout.shape) { gx = ux - c.x; gy = uy - c.y; gz = uz - c.z; }
+      else {
+        let s = 0;
+        for (const j of this.layout.near[i]) {
+          const cj = this.centres[j], w = Math.exp((ux * cj.x + uy * cj.y + uz * cj.z - 1) / .022);
+          s += w; gx += w * cj.x; gy += w * cj.y; gz += w * cj.z;
+        }
+        gx = gx / s - c.x; gy = gy / s - c.y; gz = gz / s - c.z;
+      }
+      let tx = gx + bx * .35, ty = gy + by * .35, tz = gz + bz * .35;
       const d = tx * ux + ty * uy + tz * uz;
       tx -= ux * d; ty -= uy * d; tz -= uz * d;
       const tl = Math.hypot(tx, ty, tz);

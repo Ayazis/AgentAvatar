@@ -28,10 +28,10 @@ export const DEFAULTS = {
 // These belong to the build, not to a state: the same in every state.
 export const FLARE_TARGETS = ['bloom', 'core', 'rays', 'hemRays', 'open', 'swirls', 'ribBright', 'dustBright', 'energy'];
 export const TUNE_DEFAULTS = {
-  scarfMode: 1, layout: 6, gap: .03, density: 1, solidPlates: 1,
+  scarfMode: 1, count: 6, shape: 0, shapeSize: 1, gap: .03, density: 1, solidPlates: 1,
   flareOn: { bloom: true, core: true, rays: true, hemRays: true, open: false, swirls: true, ribBright: true, dustBright: true, energy: false },
 };
-export const REBUILDS_SHELL = ['gap', 'density', 'layout'];
+export const REBUILDS_SHELL = ['gap', 'density', 'count', 'shape', 'shapeSize'];
 
 export const STORE = 'rosie-particle-orb-presets-v4';   // v4: the shell is solid by default
 export const OLD_STORE = 'rosie-particle-orb-presets-v3';   // carried over into v4, with the shell made solid
