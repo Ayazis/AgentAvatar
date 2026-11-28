@@ -4,7 +4,7 @@
 // jacket gets the same cloth motion, tilt, lighting and occlusion as the other poses. This class only keeps
 // time and loads the knotted jacket's textures (built by tools/build_knot.py from ChatGPT's last frame).
 // `blur` (0…1) smears each frame over the turn it covers, so the spin reads as motion, not a strobe.
-const base = new URL('../../assets/knot/', import.meta.url);
+const base = new URL('../../../../assets/knot/', import.meta.url);
 
 const TURN = 4*Math.PI;            // 720°
 const SWAP = 2.5*Math.PI;          // edge-on after 1¼ turns: switch idle ⇄ knot here
