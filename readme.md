@@ -39,6 +39,7 @@ The latest version is the particle orb over the scarf, in `index.html` + `src/` 
 | `src/rosie/settings.js` | `Settings`: presets, build settings and live values, saved in the browser |
 | `src/rosie/Orb.js` | `Orb`: renderer, scene graph and the frame loop; the order of the render passes |
 | `src/rosie/parts/` | The particle layers: `shell.js` (plates, hems, stitches), `core.js` (spiral and heart), `dust.js` (halo and sparks), `swirls.js`, `ribbons.js` (ribbons and swirl dust) |
+| `src/rosie/plates.js` | Where the plates sit and their shape: any count (regular solids at 4, 6, 8, 12, 20), cells or round, polygon and petal shapes |
 | `src/rosie/barrier.js` | The plates as solid walls: swirls, sparks, ribbons, dust and halo only cross the shell through the gaps |
 | `src/rosie/sprites.js` | The shared glowing point sprite, common uniforms, geometry helpers, seeded random |
 | `src/rosie/rays.js` | Light shafts through the gaps and off the hems |

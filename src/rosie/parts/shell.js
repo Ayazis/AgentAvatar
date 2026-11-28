@@ -2,24 +2,10 @@
 // petal on a hinge along one of its edges.
 import * as THREE from 'three';
 import { commonUniforms, pointsMaterial, mulberry32 } from '../sprites.js';
+import { PlateLayout } from '../plates.js';
 
 const V3 = THREE.Vector3;
 const KIND = { cloth: 0, inner: 1, hem: 2, stitch: 3 };
-
-function plateCentres(n) {
-  if (n === 6) return [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]].map(a => new V3(...a));
-  const p = (1 + Math.sqrt(5)) / 2, out = [];
-  for (const s of [-1, 1]) for (const t of [-1, 1]) out.push(new V3(0, s, t * p), new V3(s, t * p, 0), new V3(t * p, 0, s));
-  return out.map(v => v.normalize());
-}
-
-// Which plate a point belongs to, as a signed margin: > 0 inside plate i. A soft max over the other
-// plates rounds the corners, which leaves small holes where three plates meet (the core peeks through).
-function margin(p, centres, i, gap) {
-  const K = .022; let s = 0;
-  for (let j = 0; j < centres.length; j++) if (j !== i) s += Math.exp((p.dot(centres[j]) - 1) / K);
-  return p.dot(centres[i]) - (1 + K * Math.log(s)) - gap;
-}
 
 // How far from the plate's centre, along `pointAt(dist)`, the margin drops to `level` (bisection).
 function reach(pointAt, inside) {
@@ -28,22 +14,21 @@ function reach(pointAt, inside) {
   return lo;
 }
 
-function buildPlate(centres, i, gap, density, rnd) {
-  const c = centres[i];
-  const U = new V3().crossVectors(Math.abs(c.y) > .9 ? new V3(1, 0, 0) : new V3(0, 1, 0), c).normalize();
-  const W = new V3().crossVectors(c, U);
+function buildPlate(layout, i, gap, density, rnd) {
+  const c = layout.centres[i], U = layout.U[i], W = layout.W[i];
+  const margin = p => layout.marginAt(p, i, gap);
   const pos = [], kind = [], seed = [], bri = [], edge = [], phase = [];
   const push = (p, r, k, b, e, ph) => { pos.push(p.x * r, p.y * r, p.z * r); kind.push(k); seed.push(rnd()); bri.push(b); edge.push(e); phase.push(ph); };
   const at = (x, y) => new V3().copy(c).addScaledVector(U, x).addScaledVector(W, y).normalize();
 
   // cloth: points laid along diagonal twill lines, with the weave's raised ribs brighter
-  const dw = .026 / Math.sqrt(density), da = .0105 / Math.sqrt(density), ext = 1.5;
+  const dw = .026 / Math.sqrt(density), da = .0105 / Math.sqrt(density), ext = layout.ext[i];
   let line = 0;
   for (let w = -ext; w <= ext; w += dw, line++) {
     let step = 0;
     for (let a = -ext; a <= ext; a += da, step++) {
       const x = (a - w) * .7071 + (rnd() - .5) * da * .7, y = (a + w) * .7071 + (rnd() - .5) * dw * .35;
-      const p = at(x, y), m = margin(p, centres, i, gap);
+      const p = at(x, y), m = margin(p);
       if (m <= 0) continue;
       const rib = ((step >> 1) + line) % 4 < 2 ? 1 : .32;        // 2/2 twill: ribs run diagonally
       const b = Math.min(1, rib * (.8 + rnd() * .4));
@@ -56,10 +41,10 @@ function buildPlate(centres, i, gap, density, rnd) {
 
   // contours: march out from the centre to where the margin hits `level`
   const contour = level => {
-    const pts = [];
-    for (let s = 0; s < 720; s++) {
-      const ang = s / 720 * Math.PI * 2, dx = Math.cos(ang), dy = Math.sin(ang);
-      const d = reach(r => at(dx * r, dy * r), p => margin(p, centres, i, gap) > level);
+    const pts = [], N = Math.round(Math.max(180, 720 * ext / 1.5));   // smaller plates need fewer steps round
+    for (let s = 0; s < N; s++) {
+      const ang = s / N * Math.PI * 2, dx = Math.cos(ang), dy = Math.sin(ang);
+      const d = reach(r => at(dx * r, dy * r), p => margin(p) > level);
       pts.push(at(dx * d, dy * d));
     }
     pts.push(pts[0]);
@@ -179,19 +164,20 @@ export class Shell {
     this.plates = [];
   }
 
-  /** (Re)build the plates from the build settings: layout (6 or 12 plates), gap and density. */
-  build({ layout, gap, density }, open) {
+  /** (Re)build the plates from the build settings: count, shape, shape size, gap and density. */
+  build({ count, shape, shapeSize, gap, density }, open) {
     for (const p of this.plates) { this.group.remove(p.obj, p.occ, p.back); p.obj.geometry.dispose(); }
-    const centres = plateCentres(layout), rnd = mulberry32(11);
+    const layout = this.layout = new PlateLayout(count, +shape, shapeSize), rnd = mulberry32(11), tiltRnd = mulberry32(17);
+    const inside = i => p => layout.marginAt(p, i, gap) > 0;
     this.gap = gap;
-    this.plates = centres.map((_, i) => {
-      const { g, c, U, W } = buildPlate(centres, i, gap, density, rnd);
+    this.plates = layout.centres.map((_, i) => {
+      const { g, c, U, W } = buildPlate(layout, i, gap, density, rnd);
       // how wide the plate is: the angle from its centre to its farthest corner (for the barrier, see barrier.js)
       let alpha = 0;
       for (let s = 0; s < 48; s++) {
         const a = s / 48 * Math.PI * 2, dx = Math.cos(a), dy = Math.sin(a);
         alpha = Math.max(alpha, Math.atan(reach(r => new V3().copy(c).addScaledVector(U, dx * r).addScaledVector(W, dy * r).normalize(),
-                                                 p => margin(p, centres, i, gap) > 0)));
+                                                 inside(i))));
       }
       const obj = this.#plateObject(g, this.material);
       const occ = this.#plateObject(g, this.occMaterial);    // the same plate, drawn into the ray mask
@@ -202,9 +188,12 @@ export class Shell {
       // each plate opens like a petal: it swings out about a hinge on one of its edges
       const ang = rnd() * Math.PI * 2;
       const dir = new V3().addScaledVector(U, Math.cos(ang)).addScaledVector(W, Math.sin(ang));
-      const d = reach(r => new V3().copy(c).addScaledVector(dir, r).normalize(), p => margin(p, centres, i, gap) > 0);
+      const d = reach(r => new V3().copy(c).addScaledVector(dir, r).normalize(), inside(i));
       const pivot = new V3().copy(c).addScaledVector(dir, d).normalize();
-      return { obj, occ, back, c, alpha, pivot, hinge: new V3().crossVectors(c, dir).normalize(),
+      // its own lean, for Angle deviation: a random axis across the plate and how much of the slider it takes
+      const ta = tiltRnd() * Math.PI * 2;
+      const tiltAxis = new V3().addScaledVector(U, Math.cos(ta)).addScaledVector(W, Math.sin(ta));
+      return { obj, occ, back, c, alpha, pivot, tiltAxis, tiltK: .35 + .65 * tiltRnd(), hinge: new V3().crossVectors(c, dir).normalize(),
                k: rnd(), k2: rnd(), lag: .9 + rnd() * 1.4, open: open, phase: rnd() * 6.28 };
     });
   }
@@ -222,7 +211,7 @@ export class Shell {
   update({ t, live, target, breath, openBoost, ease }, density) {
     for (const p of this.plates) {
       p.open += (target.open - p.open) * ease(p.lag * 1.3);
-      this.#place(p, t, live.power, breath, openBoost);
+      this.#place(p, t, live.power, breath, openBoost, live.tilt * Math.PI / 180);
       p.occ.matrix.copy(p.obj.matrix); p.back.matrix.copy(p.obj.matrix);
     }
     const opacity = Math.min(1, Math.max(0, live.shellOpacity));
@@ -231,13 +220,19 @@ export class Shell {
     return opacity;
   }
 
-  #place(p, t, power, breath, openBoost) {
+  #place(p, t, power, breath, openBoost, tilt) {
     const o = p.open * openBoost;
     const pushOut = o * (.03 + .1 * p.k) + .006 * Math.sin(t * .9 + p.phase) * power + .012 * breath;   // plates part on the in-breath
     const flap = o * (.26 + .38 * p.k) + .02 * Math.sin(t * .7 + p.phase) * o;
     const twirl = o * .3 * (p.k2 - .5);
     const M = p.obj.matrix, P = p.pivot;
     M.makeRotationAxis(p.c, twirl);                                                    // turn a little in place
+    if (tilt) {                                                                        // lean askew, about its centre
+      const c = p.c;
+      m2.makeRotationAxis(p.tiltAxis, tilt * p.tiltK);
+      m1.makeTranslation(-c.x, -c.y, -c.z); m3.makeTranslation(c.x, c.y, c.z);
+      M.premultiply(m1).premultiply(m2).premultiply(m3);
+    }
     m1.makeTranslation(-P.x, -P.y, -P.z);
     m2.makeRotationAxis(p.hinge, flap);
     m3.makeTranslation(P.x + p.c.x * pushOut, P.y + p.c.y * pushOut, P.z + p.c.z * pushOut);

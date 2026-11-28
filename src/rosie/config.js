@@ -12,7 +12,7 @@ export const DIST = 1 / (Math.tan(FOV * Math.PI / 360) * 2 * ORB_R);   // camera
 export const STATES = ['off', 'idle', 'working'];
 
 const SHARED = {
-  shellOpacity: 0, size: 1, bloom: 1, rayLength: .85, rayAmount: 7, hemLength: .85, hemAmount: 1, swirlSpeed: 1, scarfLight: 1,
+  shellOpacity: 1, tilt: 0, size: 1, bloom: 1, rayLength: .85, rayAmount: 7, hemLength: .85, hemAmount: 1, swirlSpeed: 1, scarfLight: 1,
   breathRate: 1, breathDepth: 1, pulse: 1, flareEvery: 8, flareLen: 1, flareAmount: .8,
   ribCount: 3, ribAmount: 1500, ribSpeed: 1, ribBright: 1, ribWidth: 1, ribOrbit: 1, dustAmount: 700, dustSpeed: 1, dustBright: 1,
 };
@@ -28,12 +28,13 @@ export const DEFAULTS = {
 // These belong to the build, not to a state: the same in every state.
 export const FLARE_TARGETS = ['bloom', 'core', 'rays', 'hemRays', 'open', 'swirls', 'ribBright', 'dustBright', 'energy'];
 export const TUNE_DEFAULTS = {
-  scarfMode: 1, layout: 6, gap: .03, density: 1, solidPlates: 1,
+  scarfMode: 1, count: 6, shape: 0, shapeSize: 1, gap: .03, density: 1, solidPlates: 1,
   flareOn: { bloom: true, core: true, rays: true, hemRays: true, open: false, swirls: true, ribBright: true, dustBright: true, energy: false },
 };
-export const REBUILDS_SHELL = ['gap', 'density', 'layout'];
+export const REBUILDS_SHELL = ['gap', 'density', 'count', 'shape', 'shapeSize'];
 
-export const STORE = 'rosie-particle-orb-presets-v3';   // v3: Energy sets the tempo of all motion
+export const STORE = 'rosie-particle-orb-presets-v4';   // v4: the shell is solid by default
+export const OLD_STORE = 'rosie-particle-orb-presets-v3';   // carried over into v4, with the shell made solid
 
 // Energy is the tempo of everything that moves: x1 at Idle's 0.25, about x0.5 asleep, about x2.4 at 1.
 export const tempoOf = e => (.35 + 1.3 * e) / .675;
