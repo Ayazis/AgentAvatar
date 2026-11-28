@@ -14,6 +14,7 @@ export const controls = tempoOf => [
   { group: 'Shell', items: [
     { slider: 'shellOpacity', label: 'Opacity', min: 0, max: 1, step: .01, fmt: v => v < .01 ? 'see-through' : v > .99 ? 'solid' : `${Math.round(v * 100)} % solid` },
     { slider: 'open', label: 'Opening', min: 0, max: 1.6, step: .01, fmt: v => v < .01 ? 'sealed' : `${Math.round(v * 100)} % open` },
+    { slider: 'tilt', label: 'Angle deviation', min: 0, max: 45, step: .5, fmt: v => v < .25 ? 'aligned' : `up to ${v.toFixed(1)}°` },
     { slider: 'spin', label: 'Turn speed', min: 0, max: 1.2, step: .005, fmt: v => `${pace(v / .12)} · ${v.toFixed(2)}` },
     { select: 'layout', label: 'Plates', options: [[6, '6 (curved squares)'], [12, '12 (pentagons)']] },
     { select: 'solidPlates', label: 'Plates are', options: [[1, 'Solid: through the gaps only'], [0, 'Ghosts: pass straight through']] },

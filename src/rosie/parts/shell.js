@@ -182,7 +182,7 @@ export class Shell {
   /** (Re)build the plates from the build settings: layout (6 or 12 plates), gap and density. */
   build({ layout, gap, density }, open) {
     for (const p of this.plates) { this.group.remove(p.obj, p.occ, p.back); p.obj.geometry.dispose(); }
-    const centres = plateCentres(layout), rnd = mulberry32(11);
+    const centres = plateCentres(layout), rnd = mulberry32(11), tiltRnd = mulberry32(17);
     this.gap = gap;
     this.plates = centres.map((_, i) => {
       const { g, c, U, W } = buildPlate(centres, i, gap, density, rnd);
@@ -204,7 +204,10 @@ export class Shell {
       const dir = new V3().addScaledVector(U, Math.cos(ang)).addScaledVector(W, Math.sin(ang));
       const d = reach(r => new V3().copy(c).addScaledVector(dir, r).normalize(), p => margin(p, centres, i, gap) > 0);
       const pivot = new V3().copy(c).addScaledVector(dir, d).normalize();
-      return { obj, occ, back, c, alpha, pivot, hinge: new V3().crossVectors(c, dir).normalize(),
+      // its own lean, for Angle deviation: a random axis across the plate and how much of the slider it takes
+      const ta = tiltRnd() * Math.PI * 2;
+      const tiltAxis = new V3().addScaledVector(U, Math.cos(ta)).addScaledVector(W, Math.sin(ta));
+      return { obj, occ, back, c, alpha, pivot, tiltAxis, tiltK: .35 + .65 * tiltRnd(), hinge: new V3().crossVectors(c, dir).normalize(),
                k: rnd(), k2: rnd(), lag: .9 + rnd() * 1.4, open: open, phase: rnd() * 6.28 };
     });
   }
@@ -222,7 +225,7 @@ export class Shell {
   update({ t, live, target, breath, openBoost, ease }, density) {
     for (const p of this.plates) {
       p.open += (target.open - p.open) * ease(p.lag * 1.3);
-      this.#place(p, t, live.power, breath, openBoost);
+      this.#place(p, t, live.power, breath, openBoost, live.tilt * Math.PI / 180);
       p.occ.matrix.copy(p.obj.matrix); p.back.matrix.copy(p.obj.matrix);
     }
     const opacity = Math.min(1, Math.max(0, live.shellOpacity));
@@ -231,13 +234,19 @@ export class Shell {
     return opacity;
   }
 
-  #place(p, t, power, breath, openBoost) {
+  #place(p, t, power, breath, openBoost, tilt) {
     const o = p.open * openBoost;
     const pushOut = o * (.03 + .1 * p.k) + .006 * Math.sin(t * .9 + p.phase) * power + .012 * breath;   // plates part on the in-breath
     const flap = o * (.26 + .38 * p.k) + .02 * Math.sin(t * .7 + p.phase) * o;
     const twirl = o * .3 * (p.k2 - .5);
     const M = p.obj.matrix, P = p.pivot;
     M.makeRotationAxis(p.c, twirl);                                                    // turn a little in place
+    if (tilt) {                                                                        // lean askew, about its centre
+      const c = p.c;
+      m2.makeRotationAxis(p.tiltAxis, tilt * p.tiltK);
+      m1.makeTranslation(-c.x, -c.y, -c.z); m3.makeTranslation(c.x, c.y, c.z);
+      M.premultiply(m1).premultiply(m2).premultiply(m3);
+    }
     m1.makeTranslation(-P.x, -P.y, -P.z);
     m2.makeRotationAxis(p.hinge, flap);
     m3.makeTranslation(P.x + p.c.x * pushOut, P.y + p.c.y * pushOut, P.z + p.c.z * pushOut);

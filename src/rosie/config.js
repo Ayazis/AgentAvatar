@@ -12,7 +12,7 @@ export const DIST = 1 / (Math.tan(FOV * Math.PI / 360) * 2 * ORB_R);   // camera
 export const STATES = ['off', 'idle', 'working'];
 
 const SHARED = {
-  shellOpacity: 0, size: 1, bloom: 1, rayLength: .85, rayAmount: 7, hemLength: .85, hemAmount: 1, swirlSpeed: 1, scarfLight: 1,
+  shellOpacity: 0, tilt: 0, size: 1, bloom: 1, rayLength: .85, rayAmount: 7, hemLength: .85, hemAmount: 1, swirlSpeed: 1, scarfLight: 1,
   breathRate: 1, breathDepth: 1, pulse: 1, flareEvery: 8, flareLen: 1, flareAmount: .8,
   ribCount: 3, ribAmount: 1500, ribSpeed: 1, ribBright: 1, ribWidth: 1, ribOrbit: 1, dustAmount: 700, dustSpeed: 1, dustBright: 1,
 };
