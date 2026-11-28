@@ -1,10 +1,15 @@
 // The presets for each state, the build settings, and the live values that glide between presets.
 // Presets and build settings are saved in this browser.
-import { DEFAULTS, TUNE_DEFAULTS, STORE } from './config.js';
+import { DEFAULTS, TUNE_DEFAULTS, STORE, OLD_STORE } from './config.js';
 
 export class Settings {
   constructor() {
-    const saved = (() => { try { return JSON.parse(localStorage.getItem(STORE)) || {}; } catch { return {}; } })();
+    const load = key => { try { return JSON.parse(localStorage.getItem(key)); } catch { return null; } };
+    let saved = load(STORE);
+    if (!saved) {                              // presets saved before v4: keep them, but with the shell solid
+      saved = load(OLD_STORE) || {};
+      for (const st in saved.presets || {}) saved.presets[st].shellOpacity = DEFAULTS[st]?.shellOpacity ?? 1;
+    }
     this.presets = {};
     for (const st in DEFAULTS) this.presets[st] = { ...DEFAULTS[st], ...(saved.presets?.[st] || {}) };
     this.tune = { ...TUNE_DEFAULTS, flareOn: { ...TUNE_DEFAULTS.flareOn }, ...(saved.tune || {}) };
