@@ -3,8 +3,10 @@
 Open `index.html` through a local server (ES modules don't load from `file://`):
 
 ```
-python -m http.server 8765
+python tools/serve.py
 ```
+
+(`python -m http.server 8765` works too, but the browser may keep old copies of the modules after you change them.)
 
 then go to http://localhost:8765.
 
@@ -14,9 +16,11 @@ The latest version is the particle orb over the scarf, in `index.html` + `src/` 
 
 | Folder | What's in it |
 |---|---|
-| `index.html` | Page markup and the Tune panel controls |
-| `styles/orb.css` | Page and panel styles |
-| `src/orb.js` | The particle orb (three.js from unpkg): plates, hems, core, rays, ribbons, dust, scarf lighting, presets per state |
+| `index.html` | Page markup: the canvas and the Tune panel's frame |
+| `styles/` | `base.css` (page and stage), `panel.css` (Tune panel) |
+| `src/main.js` | Entry point: wires the orb, its input and the panel together; exposes `window.rosieOrb` for capture and testing |
+| `src/rosie/` | The particle orb (three.js from unpkg). See below |
+| `src/ui/` | The Tune panel: `controls.js` lists every control (label, range, how its value reads), `panel.js` builds and wires them |
 | `assets/base/` | Scarf base images (`scarf-unlit`, `-lit`, `-bright`, `-normal`, `-reach`) built from `assets/source/rosie-scarf-*.png` |
 | `assets/` | Also the jacket artwork used by `versions/presence-console/` (`atlas.webp`, `depth.webp`, `bounds.bin`, `poses.json`, `knot/`, `scarf/`, `hoodie/`) |
 | `assets/source/` | Inputs for the builds: ChatGPT's artwork, masks and poses |
@@ -26,6 +30,23 @@ The latest version is the particle orb over the scarf, in `index.html` + `src/` 
 | `tools/orb/` | Blender builds of the armillary orb (renders go to `tools/orb/out/`, not committed) |
 | `versions/` | Every earlier and experimental version. Open `versions/index.html` for the overview |
 | `versions/presence-console/` | The previous modular jacket console (its own `index.html`, `src/`, `styles/`) |
+
+## The particle orb, file by file
+
+| File | What it does |
+|---|---|
+| `src/rosie/config.js` | Layout, the presets for Off / Idle / Working, build settings, `tempoOf` |
+| `src/rosie/settings.js` | `Settings`: presets, build settings and live values, saved in the browser |
+| `src/rosie/Orb.js` | `Orb`: renderer, scene graph and the frame loop; the order of the render passes |
+| `src/rosie/parts/` | The particle layers: `shell.js` (plates, hems, stitches), `core.js` (spiral and heart), `dust.js` (halo and sparks), `swirls.js`, `ribbons.js` (ribbons and swirl dust) |
+| `src/rosie/sprites.js` | The shared glowing point sprite, common uniforms, geometry helpers, seeded random |
+| `src/rosie/rays.js` | Light shafts through the gaps and off the hems |
+| `src/rosie/lightBuffer.js` | The orb drawn small, so the scarf can be lit by it |
+| `src/rosie/scarf.js` | The background and scarf pass (painted or lit in code) |
+| `src/rosie/motion.js` | Breathing, the tap pulse and random boosts |
+| `src/rosie/input.js` | Drag to turn, tap to greet |
+
+To add a slider: add its default to `DEFAULTS` (per state) or `TUNE_DEFAULTS` (shared) in `config.js`, add a line to `src/ui/controls.js`, and read it from `live` (or `tune`) where it's used.
 
 ## Using the presence console in an app
 

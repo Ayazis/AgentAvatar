@@ -1,5 +1,5 @@
 { "version": "0.0.1", "configurations": [
-  { "name": "rosie", "runtimeExecutable": "python", "runtimeArgs": ["-m", "http.server", "8765"], "port": 8765 },
-  { "name": "rosie-alt", "runtimeExecutable": "python", "runtimeArgs": ["-m", "http.server", "8767"], "port": 8767, "autoPort": false },
-  { "name": "rosie-8768", "runtimeExecutable": "python", "runtimeArgs": ["-m", "http.server", "8768"], "port": 8768, "autoPort": false }
+  { "name": "rosie", "runtimeExecutable": "python", "runtimeArgs": ["tools/serve.py", "8765"], "port": 8765 },
+  { "name": "rosie-alt", "runtimeExecutable": "python", "runtimeArgs": ["tools/serve.py", "8767"], "port": 8767, "autoPort": false },
+  { "name": "rosie-8768", "runtimeExecutable": "python", "runtimeArgs": ["tools/serve.py", "8768"], "port": 8768, "autoPort": false }
 ] }
