@@ -28,7 +28,7 @@ export const DEFAULTS = {
 // These belong to the build, not to a state: the same in every state.
 export const FLARE_TARGETS = ['bloom', 'core', 'rays', 'hemRays', 'open', 'swirls', 'ribBright', 'dustBright', 'energy'];
 export const TUNE_DEFAULTS = {
-  scarfMode: 1, layout: 6, gap: .03, density: 1,
+  scarfMode: 1, layout: 6, gap: .03, density: 1, solidPlates: 1,
   flareOn: { bloom: true, core: true, rays: true, hemRays: true, open: false, swirls: true, ribBright: true, dustBright: true, energy: false },
 };
 export const REBUILDS_SHELL = ['gap', 'density', 'layout'];
