@@ -16,6 +16,7 @@ export const controls = tempoOf => [
     { slider: 'open', label: 'Opening', min: 0, max: 1.6, step: .01, fmt: v => v < .01 ? 'sealed' : `${Math.round(v * 100)} % open` },
     { slider: 'spin', label: 'Turn speed', min: 0, max: 1.2, step: .005, fmt: v => `${pace(v / .12)} · ${v.toFixed(2)}` },
     { select: 'layout', label: 'Plates', options: [[6, '6 (curved squares)'], [12, '12 (pentagons)']] },
+    { select: 'solidPlates', label: 'Plates are', options: [[1, 'Solid: through the gaps only'], [0, 'Ghosts: pass straight through']] },
     { slider: 'gap', label: 'Plate gap', min: .005, max: .12, step: .005, fmt: v => v.toFixed(3) },
     { slider: 'density', label: 'Density', min: .3, max: 2, step: .05, fmt: times },
   ] },
