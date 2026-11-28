@@ -1,0 +1,74 @@
+{
+ "box": {
+  "x": -0.10471492277861305,
+  "y": 0.19749982035928143,
+  "w": 1.207500628742515,
+  "h": 0.8050004191616766
+ },
+ "frames": [
+  {
+   "file": "frame_01.webp",
+   "ms": 120
+  },
+  {
+   "file": "frame_02.webp",
+   "ms": 45
+  },
+  {
+   "file": "frame_03.webp",
+   "ms": 50
+  },
+  {
+   "file": "frame_04.webp",
+   "ms": 45
+  },
+  {
+   "file": "frame_05.webp",
+   "ms": 55
+  },
+  {
+   "file": "frame_06.webp",
+   "ms": 45
+  },
+  {
+   "file": "frame_07.webp",
+   "ms": 45
+  },
+  {
+   "file": "frame_08.webp",
+   "ms": 55
+  },
+  {
+   "file": "frame_09.webp",
+   "ms": 60
+  },
+  {
+   "file": "frame_10.webp",
+   "ms": 75
+  },
+  {
+   "file": "frame_11.webp",
+   "ms": 70
+  },
+  {
+   "file": "frame_12.webp",
+   "ms": 65
+  },
+  {
+   "file": "frame_13.webp",
+   "ms": 55
+  },
+  {
+   "file": "frame_14.webp",
+   "ms": 55
+  },
+  {
+   "file": "frame_15.webp",
+   "ms": 45
+  },
+  {
+   "file": "frame_16.webp",
+   "ms": 200
+  }
+ ]
+}

@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Orb spike v2 (three.js)</title>
+<style>
+  html,body{margin:0;height:100%;background:#0a0610;overflow:hidden;font:12px/1.4 system-ui,sans-serif;color:#d8c9b0}
+  canvas{display:block;width:100%;height:100%;touch-action:none}
+  #hud{position:fixed;left:8px;top:8px;background:#0008;padding:8px 10px;border-radius:8px;backdrop-filter:blur(4px);max-width:200px}
+  #hud label{display:block;margin-top:4px}
+  #hud input[type=range]{width:100%}
+  #fps{font-weight:600;color:#ffb060}
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<div id="hud">
+  <div><span id="fps">–</span> fps · <span id="tris">–</span> tris</div>
+  <label>Bloom <input id="bloom" type="range" min="0" max="2" step=".01" value=".6"></label>
+  <label>Radius <input id="radius" type="range" min="0" max="1" step=".01" value=".45"></label>
+  <label>Threshold <input id="thresh" type="range" min="0" max="1" step=".01" value=".7"></label>
+  <label>Spin <input id="spin" type="range" min="0" max="3" step=".01" value="1"></label>
+  <label>Pixel ratio
+    <select id="pr"><option>1</option><option>1.5</option><option selected>2</option></select>
+  </label>
+</div>
+<script type="module" src="./orb2.js?v=16"></script>
+</body>
+</html>
