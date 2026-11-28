@@ -1,5 +1,6 @@
 // The Tune panel's controls, group by group: what each slider is called, its range, and how its value reads.
 // Keys are preset values (see config.js DEFAULTS) or build settings (TUNE_DEFAULTS); the panel tells them apart.
+import { SHAPES } from '../rosie/plates.js';
 
 const pace = v => v < .05 ? 'still' : v < .45 ? 'very slow' : v < .8 ? 'slow' : v < 1.3 ? 'normal' : v < 2.2 ? 'fast' : 'very fast';
 const paced = v => `${pace(v)} · ${v.toFixed(2)}`;
@@ -16,7 +17,9 @@ export const controls = tempoOf => [
     { slider: 'open', label: 'Opening', min: 0, max: 1.6, step: .01, fmt: v => v < .01 ? 'sealed' : `${Math.round(v * 100)} % open` },
     { slider: 'tilt', label: 'Angle deviation', min: 0, max: 45, step: .5, fmt: v => v < .25 ? 'aligned' : `up to ${v.toFixed(1)}°` },
     { slider: 'spin', label: 'Turn speed', min: 0, max: 1.2, step: .005, fmt: v => `${pace(v / .12)} · ${v.toFixed(2)}` },
-    { select: 'layout', label: 'Plates', options: [[6, '6 (curved squares)'], [12, '12 (pentagons)']] },
+    { slider: 'count', label: 'Plates', min: 2, max: 40, step: 1, fmt: v => `${Math.round(v)}${{ 4: ' · tetrahedron', 6: ' · cube', 8: ' · octahedron', 12: ' · dodecahedron', 20: ' · icosahedron' }[Math.round(v)] || ''}` },
+    { select: 'shape', label: 'Plate shape', options: SHAPES },
+    { slider: 'shapeSize', label: 'Shape size', min: .4, max: 1.6, step: .01, fmt: v => `× ${v.toFixed(2)}${v >= 1.25 ? ' · cut by its neighbours' : ''}` },
     { select: 'solidPlates', label: 'Plates are', options: [[1, 'Solid: through the gaps only'], [0, 'Ghosts: pass straight through']] },
     { slider: 'gap', label: 'Plate gap', min: .005, max: .12, step: .005, fmt: v => v.toFixed(3) },
     { slider: 'density', label: 'Density', min: .3, max: 2, step: .05, fmt: times },
