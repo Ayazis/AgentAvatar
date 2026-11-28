@@ -63,7 +63,7 @@ composer.addPass(bloom);
 
 // ---------------------------------------------------------------- background + scarf
 const loader = new THREE.TextureLoader();
-const tex = (n, srgb = true) => { const t = loader.load(`../../assets/base/scarf-${n}.webp`); if (srgb) t.colorSpace = THREE.SRGBColorSpace; return t; };
+const tex = (n, srgb = true) => { const t = loader.load(new URL(`../assets/base/scarf-${n}.webp`, import.meta.url).href); if (srgb) t.colorSpace = THREE.SRGBColorSpace; return t; };
 const bgPass = new ShaderPass({
   uniforms: { tDiffuse: { value: null }, tLit: { value: tex('lit') }, tUnlit: { value: tex('unlit') }, tBright: { value: tex('bright') }, uLit: { value: 0 },
               tNormal: { value: tex('normal', false) }, tReach: { value: tex('reach', false) }, tLight: { value: null }, tGlow: { value: null }, uBloomK: { value: 1 }, uShellOpacity: { value: 0 },

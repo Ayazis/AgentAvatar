@@ -3,7 +3,7 @@
 //   depth.webp  – the same layout, depth in R (nearer = brighter)
 //   bounds.bin  – 640×6 RGBA: each panel's left/right edge per row, 16-bit
 //   poses.json  – each panel's top/bottom per pose
-const base = new URL('../../assets/', import.meta.url);
+const base = new URL('../../../../assets/', import.meta.url);
 
 const image = name => new Promise((ok, fail) => {
   const img = new Image();
