@@ -460,11 +460,34 @@ if hasattr(CORE_NZ, 'noise_dimensions'): CORE_NZ.noise_dimensions = '4D'
 # -- shell: five large flat steel hexagons round the core. Closed, they huddle into a rough orb around it;
 # opening pushes each plate outward along its own direction. The front stays open so the core shows.
 from mathutils import Matrix
-M_EDGEGLOW, _ = glow_mat('EdgeGlow', (1.0, 0.42, 0.1), 1.6)
-M_PLATE = pbr_metal('PlateSteel', 'steel', (0.8, 0.78, 0.76), 0.16, 0.32, aniso=0.6, bump=0.08, scale=0.8,
+M_EDGEGLOW, _ = glow_mat('EdgeGlow', (1.0, 0.42, 0.1), 7)
+M_RIMGLOW, _ = glow_mat('RimGlow', (1.0, 0.4, 0.08), 6)
+M_PLATE = pbr_metal('PlateSteel', 'steel', (0.46, 0.44, 0.42), 0.2, 0.36, aniso=0.75, bump=0.1, scale=0.8,
                     edge=(0.95, 0.93, 0.9))
-M_PLATE_IN = pbr_metal('PlateInset', 'steel', (0.42, 0.41, 0.4), 0.22, 0.4, aniso=0.5, bump=0.1, scale=1.2)
+M_PLATE_IN = pbr_metal('PlateInset', 'steel', (0.3, 0.29, 0.28), 0.24, 0.42, aniso=0.6, bump=0.1, scale=1.2)
 M_RIVET = plain_metal('RivetSteel', (0.75, 0.73, 0.7), 0.25)
+
+def blade_mat(name, tag, k=1.0):
+    """Shell plate metal: a patch of ChatGPT's blade art through the plate's UVs, roughness from the steel map."""
+    m, nt, out = node_mat(name)
+    b = nt.nodes.new('ShaderNodeBsdfPrincipled')
+    b.inputs['Metallic'].default_value = 1.0; b.inputs['Anisotropic'].default_value = 0.5
+    t = nt.nodes.new('ShaderNodeTexImage'); t.extension = 'EXTEND'
+    t.image = bpy.data.images.load(os.path.join(ROOT, 'assets', 'orb-parts', f'plate-blade-{tag}.png'), check_existing=True)
+    nt.links.new(nt.nodes.new('ShaderNodeUVMap').outputs['UV'], t.inputs['Vector'])
+    mul = nt.nodes.new('ShaderNodeMix'); mul.data_type = 'RGBA'; mul.blend_type = 'MULTIPLY'
+    mul.inputs['Factor'].default_value = 1.0; mul.inputs['B'].default_value = (k, k, k, 1)
+    nt.links.new(t.outputs['Color'], mul.inputs['A']); nt.links.new(mul.outputs['Result'], b.inputs['Base Color'])
+    tc = nt.nodes.new('ShaderNodeTexCoord')
+    r = tex(nt, img('steel-rough', True), tc.outputs['Object'])
+    rr = nt.nodes.new('ShaderNodeMapRange'); rr.inputs['To Min'].default_value = 0.22; rr.inputs['To Max'].default_value = 0.5
+    nt.links.new(r.outputs['Color'], rr.inputs['Value']); nt.links.new(rr.outputs['Result'], b.inputs['Roughness'])
+    bp = nt.nodes.new('ShaderNodeBump'); bp.inputs['Strength'].default_value = 0.25; bp.inputs['Distance'].default_value = 0.01
+    nt.links.new(t.outputs['Color'], bp.inputs['Height']); nt.links.new(bp.outputs['Normal'], b.inputs['Normal'])
+    nt.links.new(b.outputs[0], out.inputs[0])
+    return m
+M_BLADE_A, M_BLADE_B = blade_mat('PlateBladeA', 'a'), blade_mat('PlateBladeB', 'b', 0.75)
+M_INSET_A, M_INSET_B = blade_mat('InsetBladeA', 'a', 0.6), blade_mat('InsetBladeB', 'b', 0.45)
 M_PLATE_BACK = plain_metal('PlateInside', (0.09, 0.085, 0.08), 0.45)   # inner faces: dark, lit by the core
 RSH = 1.8                                             # distance from the centre to each plate
 # A true dodecahedron, so the pentagon plates close into a ball without gaps or overlaps. Its face centres are the
@@ -490,7 +513,14 @@ for i in range(12):
     corners.sort(key=lambda q: math.atan2((q - c0).dot(w), (q - c0).dot(u)))
     panels.append(corners)
 scale = 1.0
-GAP, PT = 0.965, 0.08                                 # small seam between plates; plate thickness
+GAP, PT = 0.965, 0.035                                 # small seam between plates; plate thickness
+
+def uv_planar(o, span):
+    """UVs from the plate's own x/y, so the blade patch spans the plate once."""
+    me = o.data; uvl = me.uv_layers.new(name='UV')
+    for poly in me.polygons:
+        for li, vi in zip(poly.loop_indices, poly.vertices):
+            co = me.vertices[vi].co; uvl.data[li].uv = (co.x / span + 0.5, co.y / span + 0.5)
 
 def sphere_patch(pts, R0, Rs, k=1.0, sub=14):
     """Curved pentagon on a sphere: the flat polygon `pts` (local, z = 0, centre at origin, sphere centre at
@@ -512,58 +542,55 @@ def sphere_patch(pts, R0, Rs, k=1.0, sub=14):
                 if j < i: fs.append((g[i][j], g[i + 1][j + 1], g[i][j + 1]))
     return vs, fs
 
-def plate(name, pts, R0, parent):
+def plate(name, pts, R0, parent, k_=0):
     """Curved steel plate: a pentagon of the sphere, thick inward, chamfered edges, a raised darker inset that
     follows the curve, rivets near the corners and a faint glowing outline."""
     Rs = max(q.length for q in pts) ** 2 / (2 * R0) + R0 / 2 if False else (R0 ** 2 + max(q.length for q in pts) ** 2) ** 0.5
     vs, fs = sphere_patch(pts, R0, Rs)
-    o = mesh_obj(name, vs, fs, M_PLATE, parent)
-    o.data.materials.append(M_PLATE_BACK)
+    o = mesh_obj(name, vs, fs, (M_BLADE_A, M_BLADE_B)[k_ % 2], parent)
+    span = 2 * max(q.length for q in pts); uv_planar(o, span)
+    o.data.materials.append(M_PLATE_BACK); o.data.materials.append(M_RIMGLOW)
     if o.data.polygons[0].normal.z < 0: o.data.flip_normals()
-    solidify(o, PT, -1); sm = o.modifiers['solid']; sm.material_offset = 1; sm.material_offset_rim = 0
-    bevel(o, 0.008, 1, angle=30)
-    vs, fs = sphere_patch(pts, R0, Rs + 0.012, k=0.62)
-    ins = mesh_obj(name + '_inset', vs, fs, M_PLATE_IN, o)
+    solidify(o, PT, -1); sm = o.modifiers['solid']; sm.material_offset = 1; sm.material_offset_rim = 2   # rim = glowing lip
+    bevel(o, 0.003, 1, angle=30)
+    vs, fs = sphere_patch(pts, R0, Rs + 0.005, k=0.62)
+    ins = mesh_obj(name + '_inset', vs, fs, (M_INSET_A, M_INSET_B)[k_ % 2], o); uv_planar(ins, span)
     if ins.data.polygons[0].normal.z < 0: ins.data.flip_normals()
-    solidify(ins, 0.024); bevel(ins, 0.006, 1, angle=30)
+    solidify(ins, 0.008); bevel(ins, 0.002, 1, angle=30)
     O = Vector((0, 0, -R0))
     for q in pts:
         d = (q * 0.8 - O).normalized()
-        rivet(o, O + d * Rs, d, 0.03, M_RIVET)
-    edge = []
-    for e in range(len(pts)):
-        A, B = pts[e] * 0.985, pts[(e + 1) % len(pts)] * 0.985
-        edge += [O + (A.lerp(B, t / 16) - O).normalized() * (Rs + 0.002) for t in range(16)]
-    cu = bpy.data.curves.new(name + '_glow', 'CURVE'); cu.dimensions = '3D'; cu.bevel_depth = 0.005
-    sp = cu.splines.new('POLY'); sp.points.add(len(edge)); 
-    for i, q in enumerate(edge + [edge[0]]):
-        sp.points[i].co = (q.x, q.y, q.z, 1)
-    cu.materials.append(M_EDGEGLOW)
-    link(bpy.data.objects.new(name + '_glow', cu), o)
+        rivet(o, O + d * Rs, d, 0.018, M_RIVET)
     return o
 
 shell = empty('Shell', root)
 drive(shell, 'rotation_euler', 1, f'{0.12 * min(1, S["shell"])}*sin(T*tau)')   # gentle sway (plates differ now)
 CAM = Vector((0, -1, 0))
 k = 0
-# two plates are missing (one at the lower right of the front ring, one at the back upper left)
-gone = {min(range(len(panels)), key=lambda i: -(sum(panels[i], Vector()).normalized().dot(Vector((0.7, -0.45, -0.55))))),
-        min(range(len(panels)), key=lambda i: -(sum(panels[i], Vector()).normalized().dot(Vector((-0.6, 0.55, 0.6)))))}
-for pi_, pts in enumerate(panels):
-    if pi_ in gone: continue
-    pts = [q * scale for q in pts]
+# Six plates, scattered like the mockup: the front ring without its lower-right plate (4) plus the two upper plates
+# of the back ring. Holes are fine. Opening moves each plate its own distance and tips it by its own angle, so some
+# show their face and others their edge or curved inside.
+dirs_ = [sum(p_, Vector()).normalized() for p_ in panels]
+front = [i for i, d_ in enumerate(dirs_) if d_.y < 0]
+back = [i for i, d_ in enumerate(dirs_) if 0 < d_.y < 0.99]
+front.remove(max(front, key=lambda i: dirs_[i].dot(Vector((0.7, -0.45, -0.55)))))
+keep = front + sorted(back, key=lambda i: -dirs_[i].z)[:2]
+DIST = [1.7, 0.45, 1.15, 0.25, 0.9, 1.4]            # opening distance, x the state's open amount
+TILT = [28, -18, 38, -32, 12, -24]                  # degrees tipped at full opening (talking)
+TAXIS = [0, 1, 1, 0, 0, 1]                          # tip about the plate's u (0) or w (1) axis
+for k, pi_ in enumerate(keep):
+    pts = [q * scale for q in panels[pi_]]
     c = sum(pts, Vector()) / len(pts); n = c.normalized()
     u = (pts[0] - c).normalized(); w = n.cross(u)
     basis = Matrix((u, w, n)).transposed()
     local = [Vector(((q - c).dot(u) * GAP, (q - c).dot(w) * GAP, 0)) for q in pts]
     h = empty(f'panel{k}', shell, loc=tuple(c), rot=basis.to_euler())
-    # each plate slides out along its own normal; a little per-plate variation so they don't move as one
-    var = 0.4 + 1.3 * ((k * 0.618034) % 1.0)          # each plate opens its own distance (0.4x-1.7x)
-    drive(h, 'location', 0, f'{c.x}+{n.x}*{var}*({S["open"]}+{S["open_p"]}*(0.5+0.5*sin(T*tau*{max(1, S["beats"] // 2)}+{k * 0.7})))')
-    drive(h, 'location', 1, f'{c.y}+{n.y}*{var}*({S["open"]}+{S["open_p"]}*(0.5+0.5*sin(T*tau*{max(1, S["beats"] // 2)}+{k * 0.7})))')
-    drive(h, 'location', 2, f'{c.z}+{n.z}*{var}*({S["open"]}+{S["open_p"]}*(0.5+0.5*sin(T*tau*{max(1, S["beats"] // 2)}+{k * 0.7})))')
-    plate(f'plate{k}', local, c.length, h)
-    k += 1
+    op = f'({S["open"]}+{S["open_p"]}*(0.5+0.5*sin(T*tau*{max(1, S["beats"] // 2)}+{k * 0.7})))'
+    for ax, comp in enumerate((c.x, c.y, c.z)):
+        drive(h, 'location', ax, f'{comp}+{n[ax]}*{DIST[k]}*{op}')
+    tip = empty(f'tip{k}', h)
+    drive(tip, 'rotation_euler', TAXIS[k], f'radians({TILT[k]})*{op}/0.34')
+    plate(f'plate{k}', local, c.length, tip, k)
 print('shell plates:', k)
 
 # ---------------- camera, lights, world ----------------
@@ -577,8 +604,8 @@ def area(name, loc, color, energy, size):
     l = bpy.data.lights.new(name, 'AREA'); l.color = color; l.energy = energy; l.size = size
     o = link(bpy.data.objects.new(name, l)); o.location = loc
     o.rotation_euler = (-Vector(loc)).to_track_quat('-Z', 'Y').to_euler()
-area('key', (-6, -8, 3.5), (1.0, 0.94, 0.88), 1300, 6)    # soft warm-white key, upper left
-area('fill', (7, -7, -2), (0.6, 0.7, 0.95), 500, 8)      # cool fill, lower right
+area('key', (-6, -8, 3.5), (1.0, 0.94, 0.88), 1300, 2.5)    # soft warm-white key, upper left
+area('fill', (7, -7, -2), (0.6, 0.7, 0.95), 250, 8)      # cool fill, lower right
 area('rimR', (6, 6, 3), (1.0, 0.55, 0.22), 1400, 2)     # copper rims from behind
 area('rimL', (-6, 6, -3), (1.0, 0.6, 0.3), 1000, 2)
 area('top', (0, 2, 8), (1.0, 0.85, 0.7), 250, 4)
