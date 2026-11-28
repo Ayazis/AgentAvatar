@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<!-- Rosie | source and offline preview
+Open this file in a WebGL 2 browser. All geometry, shading and motion live in
+the first script. The second script is the removable standalone preview UI.
+To reuse the renderer, copy the first script and give RosieAvatar a square canvas.
+
+Application integration:
+  const avatar = new RosieAvatar(canvas);
+  avatar.setView('status', true);     // status + high detail, or header + false
+  avatar.setBusy(false);             // fold into sleep; true resumes work
+  avatar.setPose(2.4, 0.65);         // deterministic sample for external capture
+  avatar.dispose();                   // release GPU objects, callbacks, observers
+
+Capture: set the canvas CSS width to your target output size; the HD profile
+caps its drawing buffer at 1280 pixels. For a seamless 12-second busy loop at
+24 fps, sample frame 0 through 287 using avatar.setPose(frame / 24, 1).
+Sample immediately after the call. Openness runs from 0 (asleep) to 1 (busy).
+The header targets 15 fps and status targets 30 fps. These are caps, not
+measured guarantees. GPU acceleration and WebGL 2 availability depend on host.
+-->
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="dark"><title>Rosie · Avatar preview</title>
+<style>
+*{box-sizing:border-box}html{background:#0b1014;color:#eef3f3;font:16px "Segoe UI",Arial,sans-serif}body{margin:0}main{max-width:1000px;margin:auto;padding:clamp(16px,4vw,48px)}
+header{display:flex;align-items:center;gap:18px;padding-bottom:18px;border-bottom:1px solid #344047}h1{font-size:26px;letter-spacing:-.035em;font-weight:550;margin:0}.status{font-size:14px;color:#b8c3c9;margin:4px 0 0}
+#small{width:72px;height:72px;display:grid;place-items:center;background:#131a20;border:1px solid #344047;border-radius:12px;overflow:hidden}
+#small canvas{grid-area:1/1;width:72px;height:72px}#stage{display:grid;place-items:center;min-height:200px;padding:12px 0;background:radial-gradient(ellipse at 50% 50%,#20252a 0%,#151b20 32%,#0b1014 67%)}#stage canvas{width:min(100%,62vh,570px);aspect-ratio:1;height:auto}canvas{display:block}
+.controls{border-top:1px solid #344047;display:flex;align-items:center;justify-content:space-between;gap:18px;padding:18px 0;flex-wrap:wrap}fieldset{border:0;padding:0;margin:0}legend,.label{display:block;color:#aab6bf;font-size:12px;margin:0 0 8px}.back{margin-left:auto;color:#aab6bf;font-size:14px;text-decoration:none;border-bottom:1px solid #344047}.back:hover,.back:focus-visible{color:#fff;border-color:#9cb1ba}button{background:#172027;border:1px solid #36444e;color:#cad5db;padding:8px 15px;font:inherit;font-size:14px;cursor:pointer;border-radius:6px}button[aria-pressed=true]{background:#32434b;border-color:#8ea8ac;color:#fff}button:hover{border-color:#9cb1ba}button:focus-visible,input:focus-visible{outline:2px solid #e3aa64;outline-offset:3px}label{display:flex;align-items:center;gap:8px;font-size:14px;cursor:pointer}input{accent-color:#93c8cc;width:17px;height:17px}#error{color:#f1bd83}[hidden]{display:none!important}
+</style></head><body><main>
+<header><div id="small"><canvas id="still" width="144" height="144" aria-hidden="true"></canvas></div><div><h1>Rosie</h1><p class="status" id="stateLabel" role="status">Busy</p></div><a class="back" href="index.html">← All versions</a></header>
+<div id="stage"><canvas id="avatar" width="440" height="440" role="img" aria-label="Rosie, a shielded amber core wrapped in indigo denim"></canvas></div>
+<p id="error" role="alert" hidden></p>
+<div class="controls"><fieldset><legend>Activity</legend><button id="busy" type="button" aria-pressed="true">Busy</button> <button id="sleep" type="button" aria-pressed="false">Asleep</button></fieldset>
+<fieldset><legend>Preview size</legend><button id="page" type="button" aria-pressed="true">Status page</button> <button id="header" type="button" aria-pressed="false">Header</button></fieldset>
+<label><input id="hd" type="checkbox"> High detail</label></div>
+</main><script>
+// Rosie • procedural WebGL 2 avatar. Distances are in scene units.
+// The renderer has one clock, one canvas, and no external assets.
+const TAU = Math.PI * 2;
+const mix = (a, b, t) => a + (b-a)*t;
+const clamp = x => Math.max(0, Math.min(1, x));
+const smooth = x => { const t = clamp(x); return t*t*(3-2*t); };
+const add = (a,b) => a.map((v,i)=>v+b[i]);
+const sub = (a,b) => a.map((v,i)=>v-b[i]);
+const mul = (a,k) => a.map(v=>v*k);
+const cross = (a,b) => [a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
+const unit = a => mul(a,1/(Math.hypot(...a)||1));
+function rot(p, angles) {
+  let [x,y,z]=p;
+  const [a,b,c]=angles;
+  [y,z]=[y*Math.cos(a)-z*Math.sin(a), y*Math.sin(a)+z*Math.cos(a)];
+  [x,z]=[x*Math.cos(b)+z*Math.sin(b),-x*Math.sin(b)+z*Math.cos(b)];
+  return [x*Math.cos(c)-y*Math.sin(c), x*Math.sin(c)+y*Math.cos(c),z];
+}
+const circle = (r,a,y=0) => [r*Math.cos(a),y,r*Math.sin(a)];
+const oriented = (fn,angles) => (u,v)=>rot(fn(u,v),angles);
+
+// Merge patches of a moving assembly into a single GPU draw. Normals at both
+// endpoints keep the scarf lit correctly throughout its fitted-to-loose morph.
+class MeshData {
+  constructor(){ this.vertices=[]; this.indices=[]; }
+  patch(columns,rows,shape,material,sleepShape=shape){
+    const start=this.vertices.length/15;
+    const normal=(fn,u,v)=>{
+      const e=.0002;
+      return unit(cross(sub(fn(u+e,v),fn(u-e,v)),sub(fn(u,v+e),fn(u,v-e))));
+    };
+    for(let j=0;j<=rows;j++){
+      for(let i=0;i<=columns;i++){
+        const u=i/columns,v=j/rows;
+        this.vertices.push(...shape(u,v),...normal(shape,u,v),...sleepShape(u,v),...normal(sleepShape,u,v),u,v,material);
+      }
+    }
+    for(let j=0;j<rows;j++)for(let i=0;i<columns;i++){
+      const a=start+j*(columns+1)+i,b=a+columns+1;
+      this.indices.push(a,b,a+1,a+1,b,b+1);
+    }
+  }
+}
+function tube(path,r){
+  return (u,v)=>{
+    const p=path(u), tangent=unit(sub(path(u+.0001),path(u-.0001)));
+    const axis=Math.abs(tangent[1])>.99?[1,0,0]:[0,1,0];
+    const b=unit(cross(tangent,axis)), n=cross(tangent,b);
+    return add(p,add(mul(b,r*Math.cos(TAU*v)),mul(n,r*Math.sin(TAU*v))));
+  };
+}
+function ring(data,r,width,angles,mat,start=0,arc=TAU){
+  data.patch(Math.max(12,Math.round(88*arc/TAU)),7,oriented(tube(u=>circle(r,start+u*arc),width),angles),mat);
+}
+function sphere(data,center,r,mat,cols=32,rows=16){
+  data.patch(cols,rows,(u,v)=>{
+    const a=TAU*u,b=Math.PI*(v-.5);
+    return add(center,[r*Math.cos(b)*Math.cos(a),r*Math.sin(b),r*Math.cos(b)*Math.sin(a)]);
+  },mat);
+}
+// The plate has a brushed crown, a rounded shoulder and a dark underside.
+// Multiple disconnected segments leave sightlines into the mechanism.
+function shield(data,r,a0,length,width,orientation){
+  const surface=(u,v,closed=false)=>{
+    const a=a0+(closed?length*1.32:length)*u;
+    const tip=.18+.82*Math.pow(Math.max(.00001,Math.sin(Math.PI*clamp(u))),.63);
+    const w=width*(closed?2.6:1)*tip;
+    const lat=(v-.5)*w+.095*Math.sin(Math.PI*u);
+    const bevel=.018*(1-Math.pow(Math.abs(2*v-1),5));
+    const rad=r+bevel;
+    return rot([rad*Math.cos(lat)*Math.cos(a),rad*Math.sin(lat),rad*Math.cos(lat)*Math.sin(a)],orientation);
+  };
+  data.patch(64,12,surface,0,(u,v)=>surface(u,v,true));
+  for(const side of [0,1]){
+    data.patch(64,2,(u,v)=>mul(surface(u,side),1-.036*v),1,(u,v)=>mul(surface(u,side,true),1-.036*v));
+    data.patch(64,5,tube(u=>surface(u,side),.007),3,tube(u=>surface(u,side,true),.007));
+  }
+  for(const side of [0,1])data.patch(12,2,(u,v)=>mul(surface(side,u),1-.036*v),1,(u,v)=>mul(surface(side,u,true),1-.036*v));
+  data.patch(56,5,(u,v)=>mul(surface(u,v),.964),1,(u,v)=>mul(surface(u,v,true),.964));
+  for(const u of [.13,.87])sphere(data,mul(surface(u,.47),1.009),.022,3,10,6);
+}
+function makeMechanism(){
+  const groups=[];
+  const group=(tilt,turns)=>{const g={mesh:new MeshData(),tilt,turns};groups.push(g);return g.mesh;};
+  const core=group([.08,.22,.19],1);
+  sphere(core,[0,0,0],.20,4);
+  for(let j=0;j<5;j++)ring(core,.23+j*.02,.012,[j*.44,0,j*.27],j%2?2:3);
+  const frames=[
+    {tilt:[.48,.15,-.52],r:1.02,turns:1},
+    {tilt:[1.28,-.35,.79],r:.90,turns:-1},
+    {tilt:[-.48,.32,-.72],r:.74,turns:2}
+  ];
+  frames.forEach(({tilt,r,turns},i)=>{
+    const d=group(tilt,turns);
+    for(let j=0;j<3;j++)shield(d,r,j*TAU/3+i*.25,1.41+i*.05,.30-i*.035,[0,0,0]);
+    ring(d,r-.052,.014,[0,0,0],2);
+    ring(d,r-.084,.008,[0,0,0],3,.2,5.8);
+    for(let j=0;j<9;j++){
+      const a=j*TAU/9+i*.5;
+      const p=circle(r-.045,a);
+      sphere(d,p,j%3===0?.045:.023,j%3===0?3:1,12,7);
+      if(j%3===0){
+        d.patch(1,7,tube(u=>circle(mix(.28,r-.06,u),a,.035*Math.sin(Math.PI*u)),.012),3);
+        sphere(d,circle(r-.05,a,.022),.019,4,10,6);
+      }
+    }
+  });
+  for(let i=0;i<4;i++){
+    const d=group([.45+i*.55,.2,i*.81],i%2?2:-2);
+    ring(d,.35+i*.055,.010,[0,0,0],2,0,4.9);
+    for(let j=0;j<18;j++){
+      const a=j*TAU/18;
+      d.patch(1,4,tube(u=>circle(.36+i*.055+u*(j%3?.018:.041),a),.004),j%4?3:4);
+    }
+  }
+  return groups;
+}
+// A broad wrapped strip and two tails share one crossover. The sleep pose
+// keeps the loop circumference while releasing the tilt and gathering folds.
+function clothLoop(asleep){
+  return (u,v)=>{
+    const t=u*TAU, w=v-.5;
+    const fold=Math.sin(2*t+5*v)+.4*Math.sin(5*t-9*v);
+    const radius=(asleep?.77+.12*Math.sin(t*2+.3):1.055)+.055*fold+.075*Math.cos(2*Math.PI*v);
+    const y=asleep?-.39+.32*w+.105*Math.sin(3*t+4*v)+.048*Math.cos(2*t-7*v):-.06+.36*w+.055*fold;
+    const p=circle(radius,t,y);
+    return asleep?rot(p,[.09,0,.04]):rot(p,[.07,0,.43]);
+  };
+}
+function clothTail(asleep,side){
+  const loop=clothLoop(asleep), a0=.30;
+  return (u,v)=>{
+    const w=v-.5, edge=2*Math.abs(w);
+    const base=loop(a0,.5), fade=Math.sin(.5*Math.PI*clamp(u));
+    const length=side===1?.74:.46;
+    const dx=side*length*(.75*u+.25*u*u);
+    const dy=asleep?-.25*Math.sin(Math.PI*u*.85)-.12*u:
+         (side===1?-.66:.39)*u+.085*Math.sin(TAU*u);
+    const dz=.08+.25*Math.sin(u*Math.PI*.85);
+    const width=(side===1?.41:.29)*(.43+.57*Math.sin(Math.PI*u*.85));
+    return [base[0]+dx+w*width*.38+side*.19*(1-edge)*fade*u*u,
+      base[1]+dy+w*width*(asleep?.62:1)+.035*Math.sin(7*u+5*v),
+      base[2]+dz+w*width*(asleep?.95:.6)+.06*Math.sin(u*5+v*2)];
+  };
+}
+function makeScarf(){
+  const d=new MeshData();
+  const strip=(a,s,n,mat)=>{
+    d.patch(n,22,a,mat,s);
+    for(const v of [.008,.992]){
+      d.patch(n,6,tube(u=>a(u,v),.010),8,tube(u=>s(u,v),.010));
+    }
+  };
+  strip(clothLoop(false),clothLoop(true),132,5);
+  for(const side of [-1,1])strip(clothTail(false,side),clothTail(true,side),48,side===1?6:7);
+  return d;
+}
+const commonGLSL=`
+const float tau=6.28318530718;
+vec3 rotateX(vec3 p,float a){return vec3(p.x,cos(a)*p.y-sin(a)*p.z,sin(a)*p.y+cos(a)*p.z);}
+vec3 rotateY(vec3 p,float a){return vec3(cos(a)*p.x+sin(a)*p.z,p.y,-sin(a)*p.x+cos(a)*p.z);}
+vec3 rotateZ(vec3 p,float a){return vec3(cos(a)*p.x-sin(a)*p.y,sin(a)*p.x+cos(a)*p.y,p.z);}
+vec4 projectPoint(vec3 p){
+  p=rotateX(p,.22);
+  float depth=5.1-p.z;
+  return vec4((p.xy+vec2(0.,.09))*3.34,(1.02*depth-1.0),depth);
+}`;
+const meshVertex=`#version 300 es
+precision highp float;
+layout(location=0) in vec3 activePos;
+layout(location=1) in vec3 activeNormal;
+layout(location=2) in vec3 sleepPos;
+layout(location=3) in vec3 sleepNormal;
+layout(location=4) in vec2 uv;
+layout(location=5) in float material;
+uniform vec3 tilt;
+uniform float phase,scale,drop,awake,cloth;
+out vec3 position,normal;
+out vec2 tex;
+flat out int kind;
+`+commonGLSL+`
+vec3 orient(vec3 p){return rotateZ(rotateY(rotateX(rotateY(p,phase),tilt.x),tilt.y),tilt.z);}
+void main(){
+ float blend=cloth>.5?smoothstep(.02,.88,awake):awake;
+ position=orient(mix(sleepPos,activePos,blend))*scale+vec3(0.,drop,0.);
+ normal=orient(mix(sleepNormal,activeNormal,blend));
+ tex=uv;kind=int(material+.5);gl_Position=projectPoint(position);
+}`;
+const meshFragment=`#version 300 es
+precision highp float;
+in vec3 position,normal;
+in vec2 tex;
+flat in int kind;
+uniform float awake,detail;
+out vec4 color;
+float boxLight(vec3 r,vec3 dir,float sharp){return exp(-sharp*(1.-dot(r,normalize(dir))));}
+float filteredWave(float f){return cos(6.283185*f)*(1.-smoothstep(.14,.75,fwidth(f)));}
+float interval(float x,float w){return 1.-smoothstep(w,w+max(fwidth(x),.0005),abs(x));}
+void main(){
+ vec3 v=normalize(vec3(0.,1.12,5.)-position), n=normalize(normal);
+ if(dot(n,v)<0.) n=-n;
+ vec3 r=reflect(-v,n), key=normalize(vec3(-.55,.80,1.)), amber=vec3(1.,.43,.12);
+ float light=max(.0,dot(n,key)),fres=pow(1.-max(0.,dot(n,v)),3.);
+ vec3 rgb;
+ if(kind>=5){
+   float repeat=kind==5?640.:95.;
+   float thread=tex.x*repeat+tex.y*67.;
+   float twill=filteredWave(thread)*.13+filteredWave(thread*.333)*.075;
+   float weft=filteredWave(tex.y*76.)*.08;
+   float grain=fract(sin(dot(floor(tex*vec2(repeat*2.,120.)),vec2(17.11,31.73)))*4721.53);
+   float wash=.94+.085*sin(tex.y*19.+sin(tex.x*29.))+.045*sin(tex.x*87.+tex.y*11.);
+   float hem=min(tex.y,1.-tex.y);
+   vec3 denim=mix(vec3(.035,.086,.158),vec3(.18,.32,.48),.55+.48*twill);
+   denim*=wash*(.96+twill+weft+.13*(grain-.5));
+   denim+=vec3(.04,.046,.054)*exp(-hem*36.);
+   float row=max(interval(hem-.067,.0065),interval(hem-.103,.0045));
+   float dash=.22+.78*smoothstep(-.55,.10,filteredWave(tex.x*(kind==5?180.:32.)));
+   if(kind==6){
+     vec2 p=abs(tex-vec2(.72,.52))-vec2(.087,.114);
+     float welt=max(p.x,p.y);
+     denim=mix(denim,vec3(.023,.050,.080),1.-smoothstep(-.012,.002,welt));
+     row=max(row,interval(welt,.007));
+   }
+   denim=mix(denim,vec3(.74,.37,.12),row*dash*.92);
+   if(kind==8)denim=vec3(.43,.36,.27);
+   rgb=denim*(.58+.84*light)+vec3(.20,.24,.29)*fres*.68;
+ } else if(kind==4){
+   float center=pow(max(0.,dot(n,v)),3.);
+   rgb=mix(vec3(.55,.19,.022),vec3(1.,.47,.06),awake)+vec3(.48,.49,.37)*center;
+ } else {
+   vec3 metal=kind==0?vec3(.57,.61,.65):kind==1?vec3(.20,.23,.26):kind==2?vec3(.29,.19,.10):vec3(.63,.37,.17);
+   float env=.19+.17*light+.56*boxLight(r,vec3(-1.,.8,1.),6.)
+       +.72*boxLight(r,vec3(.25,1.,.3),20.)+.23*fres;
+   float streak=filteredWave(tex.y*91.+.45*sin(tex.x*9.));
+   rgb=metal*(env+.038*streak*detail)+vec3(.4,.44,.49)*boxLight(r,vec3(-.42,.58,1.),34.);
+   rgb+=vec3(.26,.36,.50)*boxLight(r,vec3(-.85,.3,-.2),7.);
+   rgb+=amber*(.55*boxLight(r,vec3(1.,.3,.1),7.)+.10*fres);
+   rgb+=amber*.08/(.28+dot(position,position));
+ }
+ color=vec4(rgb,1.);
+}`;
+const particleVertex=`#version 300 es
+precision highp float;
+layout(location=0) in vec4 seed;
+uniform float time,awake,pixels,scale,drop;
+out vec3 tint;
+`+commonGLSL+`
+void main(){
+ float lane=seed.y, speed=mod(lane,3.)+1.;
+ float a=tau*(seed.x+time*speed/12.);
+ float radius=.46+.045*lane+.019*sin(3.*a+lane);
+ vec3 p=vec3(radius*cos(a),.042*sin(a*3.+lane)+.014*(seed.z-.5),radius*sin(a));
+ p=rotateZ(rotateX(p,lane*.49+.13),lane*.74);
+ p=p*scale+vec3(0.,drop,0.);
+ gl_Position=projectPoint(p);
+ float packet=.14+.86*pow(.5+.5*cos(a*2.-tau*time/12.*(speed+1.)+lane),8.);
+ gl_PointSize=clamp(pixels*(.002+.0031*seed.w)*(.65+.45*packet),1.,5.);
+ tint=mix(vec3(1.,.48,.10),vec3(.18,.83,.96),step(3.5,mod(lane,6.)))*(.50+.70*packet)*(.19+.81*awake);
+}`;
+const particleFragment=`#version 300 es
+precision highp float;
+in vec3 tint;
+out vec4 color;
+void main(){float d=length(gl_PointCoord*2.-1.); if(d>1.)discard; color=vec4(tint,1.-smoothstep(.22,1.,d));}`;
+
+function program(gl,vertex,fragment){
+  const shaders=[];
+  const p=gl.createProgram();
+  try{
+    for(const [type,src] of [[gl.VERTEX_SHADER,vertex],[gl.FRAGMENT_SHADER,fragment]]){
+      const s=gl.createShader(type); shaders.push(s); gl.shaderSource(s,src);gl.compileShader(s);
+      if(!gl.getShaderParameter(s,gl.COMPILE_STATUS))throw Error(gl.getShaderInfoLog(s));
+      gl.attachShader(p,s);
+    }
+    gl.linkProgram(p);
+    if(!gl.getProgramParameter(p,gl.LINK_STATUS))throw Error(gl.getProgramInfoLog(p));
+  }catch(e){gl.deleteProgram(p);throw e;}finally{shaders.forEach(s=>gl.deleteShader(s));}
+  return p;
+}
+function upload(gl,mesh){
+  const vao=gl.createVertexArray(),vbo=gl.createBuffer(),ibo=gl.createBuffer();
+  gl.bindVertexArray(vao);gl.bindBuffer(gl.ARRAY_BUFFER,vbo);
+  gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(mesh.vertices),gl.STATIC_DRAW);
+  const sizes=[3,3,3,3,2,1];let offset=0;
+  sizes.forEach((n,i)=>{gl.enableVertexAttribArray(i);gl.vertexAttribPointer(i,n,gl.FLOAT,false,60,offset*4);offset+=n;});
+  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,ibo);
+  gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,new Uint32Array(mesh.indices),gl.STATIC_DRAW);
+  return {vao,vbo,ibo,count:mesh.indices.length};
+}
+function locations(gl,p,names){return Object.fromEntries(names.split(' ').map(n=>[n,gl.getUniformLocation(p,n)]));}
+class RosieAvatar {
+  constructor(canvas){
+    this.canvas=canvas;
+    this.gl=canvas.getContext('webgl2',{alpha:true,antialias:true,premultipliedAlpha:false});
+    if(!this.gl)throw Error('Rosie requires WebGL 2 and hardware acceleration in this browser.');
+    this.manual=false;this.time=0;this.amount=1;this.target=1;this.placement='status';this.hd=false;
+    this.request=0;this.frames=0;this.last=null;this.disposed=false;
+    this.query=matchMedia('(prefers-reduced-motion: reduce)');
+    this.resetClock=()=>{this.stop();this.invalidate();};
+    this.onLoss=e=>{e.preventDefault();this.stop();};
+    this.onRestore=()=>{this.init();this.invalidate();};
+    canvas.addEventListener('webglcontextlost',this.onLoss);
+    canvas.addEventListener('webglcontextrestored',this.onRestore);
+    document.addEventListener('visibilitychange',this.resetClock);
+    this.query.addEventListener('change',this.resetClock);
+    this.observer=new ResizeObserver(this.resetClock);this.observer.observe(canvas);
+    this.inView=true;
+    this.intersection=new IntersectionObserver(([entry])=>{this.inView=entry.isIntersecting;this.resetClock();});
+    this.intersection.observe(canvas);
+    this.init();this.invalidate();
+  }
+  init(){
+    const gl=this.gl;
+    this.surface=program(gl,meshVertex,meshFragment);this.points=program(gl,particleVertex,particleFragment);
+    this.uniform=locations(gl,this.surface,'tilt phase scale drop awake cloth detail');
+    this.particleUniform=locations(gl,this.points,'time awake pixels scale drop');
+    this.parts=makeMechanism().map(g=>({...upload(gl,g.mesh),tilt:g.tilt,turns:g.turns}));
+    this.scarf=upload(gl,makeScarf());
+    const data=[];
+    // Interleaving the lanes keeps the header and standard subsets balanced.
+    for(let j=0;j<380;j++)for(let lane=0;lane<8;lane++){
+      const x=(j*.61803398875+lane*.127)%1;
+      data.push(x,lane,(j*.3819)%1,(j*.739+lane*.41)%1);
+    }
+    this.stars=gl.createVertexArray();gl.bindVertexArray(this.stars);
+    this.seeds=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,this.seeds);
+    gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(data),gl.STATIC_DRAW);
+    gl.enableVertexAttribArray(0);gl.vertexAttribPointer(0,4,gl.FLOAT,false,0,0);
+    gl.bindVertexArray(null);
+  }
+  setBusy(value){this.manual=false;this.target=value?1:0;this.invalidate();}
+  // Capture-friendly absolute sampling: no integration drift between frames.
+  // Call setBusy(true/false) to resume normal playback.
+  setPose(phaseSeconds,openness){
+    if(!Number.isFinite(phaseSeconds)||!Number.isFinite(openness))throw TypeError('Expected finite phase and openness');
+    this.stop();this.manual=true;this.time=(phaseSeconds%12+12)%12;this.amount=clamp(openness);
+    this.draw(this.time,this.amount);
+  }
+  setView(placement,highDetail=false){
+    this.placement=placement==='header'?'header':'status';
+    this.hd=Boolean(highDetail);this.resetClock();
+  }
+  stop(){cancelAnimationFrame(this.request);this.request=0;this.last=null;}
+  invalidate(){
+    if(this.disposed||this.request||document.hidden||!this.inView||this.gl.isContextLost())return;
+    this.request=requestAnimationFrame(t=>this.tick(t));
+  }
+  tick(t){
+    this.request=0;
+    const period=1000/(this.placement==='header'?15:30);
+    if(this.last!==null&&t-this.last<period-.75){this.invalidate();return;}
+    const dt=this.last===null?0:Math.min(.15,(t-this.last)/1000);
+    this.last=t;
+    if(this.manual){this.draw(this.time,this.amount);this.last=null;return;}
+    if(this.query.matches)this.amount=this.target;
+    else {
+      const distance=this.target-this.amount;
+      this.amount+=Math.sign(distance)*Math.min(Math.abs(distance),dt/(this.target?1.15:1.65));
+      this.time=(this.time+dt*smooth(this.amount))%12;
+    }
+    this.draw(this.time,this.amount);
+    if(!this.query.matches&&(this.target===1||this.amount!==this.target))this.invalidate();
+    else this.last=null;
+  }
+  // Deterministic entry point for frame capture. phaseSeconds wraps every 12 s.
+  draw(phaseSeconds,openness){
+    const gl=this.gl, header=this.placement==='header', hd=this.hd&&!header;
+    const px=Math.max(1,Math.min(header?144:hd?1280:540,Math.round(this.canvas.clientWidth*Math.min(devicePixelRatio,hd?2:1.5))));
+    if(this.canvas.width!==px||this.canvas.height!==px){this.canvas.width=px;this.canvas.height=px;}
+    gl.viewport(0,0,px,px);gl.clearColor(0,0,0,0);gl.clearDepth(1);
+    gl.enable(gl.DEPTH_TEST);gl.depthMask(true);gl.disable(gl.BLEND);
+    gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+    const awake=smooth(openness),drop=-.20*(1-awake);
+    const u=this.uniform;gl.useProgram(this.surface);
+    gl.uniform1f(u.awake,awake);gl.uniform1f(u.detail,header?.25:hd?1:.7);
+    const drawPart=(part,tilt,phase,scale,y,cloth)=>{
+      gl.uniform3fv(u.tilt,tilt);gl.uniform1f(u.phase,phase);gl.uniform1f(u.scale,scale);
+      gl.uniform1f(u.drop,y);gl.uniform1f(u.cloth,cloth);gl.bindVertexArray(part.vao);
+      gl.drawElements(gl.TRIANGLES,part.count,gl.UNSIGNED_INT,0);
+    };
+    this.parts.forEach((p,i)=>{
+      const inset=mix(.31+(i%3)*.016,1,awake);
+      drawPart(p,p.tilt,phaseSeconds/12*TAU*p.turns,inset,drop,0);
+    });
+    drawPart(this.scarf,[0,0,0],0,1,0,1);
+    const s=this.particleUniform;gl.useProgram(this.points);
+    gl.uniform1f(s.time,phaseSeconds);gl.uniform1f(s.awake,awake);gl.uniform1f(s.pixels,px);
+    gl.uniform1f(s.scale,mix(.31,1,awake));gl.uniform1f(s.drop,drop);
+    gl.bindVertexArray(this.stars);gl.enable(gl.BLEND);
+    gl.blendFuncSeparate(gl.SRC_ALPHA,gl.ONE,gl.ONE,gl.ONE_MINUS_SRC_ALPHA);
+    gl.depthMask(false);gl.drawArrays(gl.POINTS,0,header?520:hd?3040:2080);
+    gl.depthMask(true);gl.disable(gl.BLEND);gl.bindVertexArray(null);
+    this.frames++;
+    this.onFrame?.(this);
+  }
+  dispose(){
+    this.stop();this.disposed=true;this.observer.disconnect();this.intersection.disconnect();
+    document.removeEventListener('visibilitychange',this.resetClock);
+    this.query.removeEventListener('change',this.resetClock);
+    this.canvas.removeEventListener('webglcontextlost',this.onLoss);
+    this.canvas.removeEventListener('webglcontextrestored',this.onRestore);
+    const gl=this.gl;
+    for(const p of [...this.parts,this.scarf]){
+      gl.deleteBuffer(p.vbo);gl.deleteBuffer(p.ibo);gl.deleteVertexArray(p.vao);
+    }
+    gl.deleteBuffer(this.seeds);gl.deleteVertexArray(this.stars);
+    gl.deleteProgram(this.surface);gl.deleteProgram(this.points);
+  }
+}
+window.RosieAvatar=RosieAvatar;
+
+</script><script>
+const ui=Object.fromEntries(Array.from(document.querySelectorAll('[id]'),el=>[el.id,el]));
+try{
+ const avatar=new RosieAvatar(ui.avatar);
+ window.rosie=avatar;
+ let headerMode=false,needsStill=true;
+ const ctx=ui.still.getContext('2d');
+ try{ui.hd.checked=localStorage.getItem('rosie.hd')==='1';}catch{}
+ avatar.onFrame=()=>{
+   if(needsStill&&!headerMode && avatar.amount===avatar.target){
+     ctx.clearRect(0,0,144,144);ctx.drawImage(ui.avatar,0,0,144,144);needsStill=false;
+   }
+ };
+ function selectView(header){
+   headerMode=header;
+   (header?ui.small:ui.stage).appendChild(ui.avatar);
+   ui.stage.hidden=header;ui.still.hidden=header;ui.hd.disabled=header;
+   ui.page.setAttribute('aria-pressed',!header);ui.header.setAttribute('aria-pressed',header);
+   needsStill=true;avatar.setView(header?'header':'status',ui.hd.checked);
+ }
+ function activity(busy){
+   ui.busy.setAttribute('aria-pressed',busy);ui.sleep.setAttribute('aria-pressed',!busy);
+   ui.stateLabel.textContent=busy?'Busy':'Asleep';needsStill=true;avatar.setBusy(busy);
+ }
+ ui.busy.onclick=()=>activity(true);ui.sleep.onclick=()=>activity(false);
+ ui.page.onclick=()=>selectView(false);ui.header.onclick=()=>selectView(true);
+ ui.hd.onchange=()=>{try{localStorage.setItem('rosie.hd',ui.hd.checked?'1':'0');}catch{}selectView(headerMode);};
+ selectView(false);
+}catch(err){ui.error.hidden=false;ui.error.textContent=err.message;document.querySelectorAll('button,input').forEach(el=>el.disabled=true);console.error(err);}
+</script></body></html>
