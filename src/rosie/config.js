@@ -1,40 +1,42 @@
-// Fixed layout numbers and the default slider values for each state.
+// Layout, the per-state presets and the build settings. Every number here is something the panel can change.
 
-// the orb sits at chest height, inside the jacket (picture coords: x 0…1, y 0 top … 1 bottom, 2:3 frame)
-export const ORB = { x: .5, y: .565 };
+// ---------------------------------------------------------------- layout
+export const ORB_Y = .315;   // orb centre, fraction of stage height from the top
+export const ORB_R = .24;    // shell radius, fraction of stage height
+export const FOV = 30;
+export const DIST = 1 / (Math.tan(FOV * Math.PI / 360) * 2 * ORB_R);   // camera distance that gives that radius
 
-// particle budgets: the sliders choose how many of these are shown
-export const MAX = { orb: 6000, rib: 9000, dust: 5000 };
+// ---------------------------------------------------------------- states
+// Each state is a full preset: every value it has is on a slider, and the panel edits the state on screen.
+// Switching state glides every value to the other preset. Presets are saved in this browser.
+export const STATES = ['off', 'idle', 'working'];
 
-export const TRANSITION_DEFAULT = 2.5;   // seconds
-
-// the jacket pose for each state (0 off, 1 idle, 2 working); fractions are a blend between poses
-export const POSE = { off: 0, idle: 1, working: 2, knot: 1, scarf: 1, hoodie: 1 };   // knot, scarf: idle pose, then the turn into the knotted look
-
-// One preset per state. Switching state glides every value from one preset to the other.
-// Off and Knot start as copies of Idle; Off also dims the light on its own.
-const IDLE = {
-  silkOn: 1, silkBright: 1, silkWidth: 1, silkSway: 1, silkSpeed: 1, sparks: 1, sparkSpeed: 1,
-  ringSize: 1.55, ringTilt: 18, ringRoll: -20, ringDepth: 0,
-  orbOn: 1, orbCount: 1400, orbSize: 1, orbBright: 1, orbSpin: 1, orbGlow: 1,
-  ribOn: 1, ribCount: 3, ribAmount: 1500, ribSpeed: 1, ribBright: 1, ribWidth: 1, ribOrbit: 1,
-  dustOn: 1, dustAmount: 700, dustSpeed: 1, dustBright: 1,
-  jacketMotion: 1, jacketSpeed: 1, breathRate: 1, pSize: 1, tilt: 1,
-  denimLight: 1, lightSpread: 1, denimShade: 1,   // how much the particles light the denim, and how far their light reaches
-  knotBlur: 1, knotSpeed: 1,    // idle ⇄ knot turn: motion blur (0 = sharp), turn speed
+const SHARED = {
+  shellOpacity: 0, size: 1, bloom: 1, rayLength: .85, rayAmount: 7, hemLength: .85, hemAmount: 1, swirlSpeed: 1, scarfLight: 1,
+  breathRate: 1, breathDepth: 1, pulse: 1, flareEvery: 8, flareLen: 1, flareAmount: .8,
+  ribCount: 3, ribAmount: 1500, ribSpeed: 1, ribBright: 1, ribWidth: 1, ribOrbit: 1, dustAmount: 700, dustSpeed: 1, dustBright: 1,
+};
+export const DEFAULTS = {
+  off:     { ...SHARED, breathDepth: .6, pulse: .6, flareEvery: 0, open: 0, spin: .058, core: .05, rays: .02, hemRays: .45, swirls: 0,
+             power: .16, halo: .12, energy: 0, lit: 0, bloom: .7 },
+  idle:    { ...SHARED, open: .32, spin: .12, core: 1, rays: .66, hemRays: .66, swirls: 3, power: 1, halo: .7, energy: .25, lit: 1 },
+  working: { ...SHARED, breathRate: 1.37, flareEvery: 4, ribSpeed: 1.07, ribWidth: 1.25, dustSpeed: 1.07, dustBright: 1.6,
+             open: 1, spin: .156, core: 1.55, rays: 2, hemRays: 1.3, swirls: 7, power: 1.1, halo: 1.15, energy: 1, lit: 1.75 },
 };
 
-export const STATES = ['off', 'idle', 'working', 'knot', 'scarf', 'hoodie'];
-
+// ---------------------------------------------------------------- build settings
+// These belong to the build, not to a state: the same in every state.
+export const FLARE_TARGETS = ['bloom', 'core', 'rays', 'hemRays', 'open', 'swirls', 'ribBright', 'dustBright', 'energy'];
 export const TUNE_DEFAULTS = {
-  off: IDLE,
-  idle: IDLE,
-  knot: IDLE,
-  scarf: IDLE,
-  hoodie: IDLE,
-  working: { ...IDLE, silkBright: 1.15, silkWidth: 1.05, sparks: 1.5, sparkSpeed: 3.1,
-    orbSpin: 4.2, orbGlow: 1.45, ribSpeed: 2.6, ribWidth: 1.25, dustSpeed: 2.6, dustBright: 1.6,
-    denimLight: 1.25, denimShade: 1.3, jacketMotion: 1.8, jacketSpeed: 1.7, breathRate: 1.37 },
+  scarfMode: 1, layout: 6, gap: .03, density: 1,
+  flareOn: { bloom: true, core: true, rays: true, hemRays: true, open: false, swirls: true, ribBright: true, dustBright: true, energy: false },
 };
+export const REBUILDS_SHELL = ['gap', 'density', 'layout'];
 
-export const presetFor = state => state in TUNE_DEFAULTS ? state : 'idle';
+export const STORE = 'rosie-particle-orb-presets-v3';   // v3: Energy sets the tempo of all motion
+
+// Energy is the tempo of everything that moves: x1 at Idle's 0.25, about x0.5 asleep, about x2.4 at 1.
+export const tempoOf = e => (.35 + 1.3 * e) / .675;
+
+// How awake she is, from Brightness: 0 when off, 1 at Idle and above.
+export const aliveOf = power => Math.min(1, Math.max(0, (power - .16) / .84));
