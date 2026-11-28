@@ -156,6 +156,11 @@ export class Orb {
     const su = this.scarf.uniforms;
     su.uLit.value = Math.min(2, live.lit) * flick;
     su.uLightGain.value = 1.1 * live.scarfLight;
+    // the scarf's light flickers with the core: a slow waver and a quicker, livelier one as she works harder
+    su.uTime.value = t;
+    su.uShimmer.value = live.scarfShimmer;
+    su.uFlick.value = 1 + live.scarfShimmer * (.05 * Math.sin(t * 6.7) * Math.sin(t * 2.3 + 1)
+                        + (.03 + .07 * live.energy) * Math.sin(t * 17.3 + Math.sin(t * 3.1) * 2) * Math.sin(t * 4.7));
     su.uBloomK.value = this.bloom.strength;                                    // last frame's strength
     su.uCode.value = tune.scarfMode;
     this.bloom.strength = .45 * Math.pow(live.bloom, 1.6) * (1 + .1 * breath);  // gentle near 1, lower ceiling

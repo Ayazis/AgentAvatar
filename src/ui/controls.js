@@ -79,6 +79,8 @@ export const controls = tempoOf => [
   { group: 'Scarf', items: [
     { select: 'scarfMode', label: 'Scarf light', options: [[1, 'Code: lit by the orb'], [0, 'Painted: lit / bright images']] },
     { slider: 'scarfLight', label: 'Scarf light strength', min: 0, max: 2.5, step: .01 },
+    { slider: 'scarfShimmer', label: 'Scarf shimmer', min: 0, max: 3, step: .01, fmt: v => v < .01 ? 'steady' : num(v) },
+    { note: 'Code light only: how much the orb’s sparks, flicker and glints play on the scarf, as flashes on the folds and glints in the weave.' },
     { slider: 'lit', label: 'Painted light level', min: 0, max: 2, step: .01 },
     { note: 'Painted mode only: 0 unlit, 1 lit, 2 bright.' },
   ] },
