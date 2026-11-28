@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Rosie Fold</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: clamp(20px, 5vw, 56px);
+      background: #151318;
+      color: #f5e6dd;
+      font: 1rem system-ui, sans-serif;
+    }
+    main { max-width: 740px; margin-inline: auto; }
+    header { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+    h1 { margin: 0; font: 400 clamp(2rem, 7vw, 4rem) Georgia, serif; }
+    a { color: #dcc0b4; text-underline-offset: 4px; }
+    fieldset { min-inline-size: 0; margin: 24px 0 0; padding: 0; border: 0; }
+    legend { color: #dcc0b4; padding: 0; margin-bottom: 10px; }
+    label {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin: 0 4px 6px 0;
+      padding: 8px 10px;
+      border: 1px solid #715461;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    label:has(:checked) { background: #593446; border-color: #f3ac9b; }
+    :focus-visible { outline: 2px solid #ffcc90; outline-offset: 3px; }
+    input { margin: 0; accent-color: #ffc0ad; }
+    .stage {
+      --spread: 13px;
+      --scale: .84;
+      --light: .85;
+      display: grid;
+      place-items: center;
+      margin-top: 16px;
+      border: 1px solid #59434f;
+      border-radius: 8px;
+      background: radial-gradient(ellipse, #38212f, #201a24 68%);
+    }
+    fieldset:has(#off:checked) .stage { --spread: 0px; --scale: .64; --light: .13; }
+    fieldset:has(#working:checked) .stage { --spread: 33px; --scale: 1; --light: 1; }
+    svg { display: block; width: min(100%, 500px); height: auto; }
+    .bloom, .petal { transform-origin: 200px 200px; }
+    .bloom { transform: scale(var(--scale)); transition: transform .55s ease; }
+    .petal { transform: translateY(calc(-1 * var(--spread))); transition: transform .55s ease; }
+    .core { opacity: var(--light); transition: opacity .55s ease; }
+    .rotor { transform-origin: 200px 200px; }
+    fieldset:has(#idle:checked) .rotor { animation: breathe 5s ease-in-out infinite; }
+    fieldset:has(#working:checked) .rotor { animation: spin 18s linear infinite; }
+    @keyframes breathe { 50% { transform: scale(1.045); } }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation: none !important; transition: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Rosie Fold</h1>
+      <a href="index.html">All versions</a>
+    </header>
+    <fieldset>
+      <legend>Avatar state</legend>
+      <label><input id="off" name="state" type="radio"> Off</label>
+      <label><input id="idle" name="state" type="radio" checked> Idle</label>
+      <label><input id="working" name="state" type="radio"> Working</label>
+      <div class="stage">
+        <svg viewBox="0 0 400 400" width="400" height="400" role="img" aria-labelledby="avatar-title">
+          <title id="avatar-title">Eight folded rose and plum petals around an amber core</title>
+          <defs>
+            <linearGradient id="paper" x2="1" y2="1">
+              <stop stop-color="#ffe0c4"/>
+              <stop offset=".5" stop-color="#cf798e"/>
+              <stop offset="1" stop-color="#673851"/>
+            </linearGradient>
+            <linearGradient id="crease" x2="0" y2="1">
+              <stop stop-color="#ec9e9f"/>
+              <stop offset="1" stop-color="#422136"/>
+            </linearGradient>
+            <radialGradient id="glow">
+              <stop stop-color="#ffc77c" stop-opacity=".7"/>
+              <stop offset="1" stop-color="#ff9e67" stop-opacity="0"/>
+            </radialGradient>
+            <g id="fold">
+              <path fill="url(#paper)" d="M200 193 167 145 182 107 213 82 236 125 226 157Z"/>
+              <path fill="url(#crease)" d="M200 193 197 138 213 82 236 125 226 157Z"/>
+              <path fill="#ffd7bb" opacity=".64" d="M213 82 197 138 200 193 193 139Z"/>
+              <path fill="#351b31" opacity=".42" d="M200 193 167 145 197 138Z"/>
+            </g>
+          </defs>
+          <circle cx="200" cy="200" r="167" fill="none" stroke="#826271" stroke-opacity=".38"/>
+          <circle cx="200" cy="200" r="178" fill="none" stroke="#826271" stroke-opacity=".3" stroke-dasharray="1 7"/>
+          <g class="bloom">
+            <g class="rotor">
+              <g transform="rotate(0 200 200)"><use class="petal" href="#fold"/></g>
+              <g transform="rotate(45 200 200)"><use class="petal" href="#fold"/></g>
+              <g transform="rotate(90 200 200)"><use class="petal" href="#fold"/></g>
+              <g transform="rotate(135 200 200)"><use class="petal" href="#fold"/></g>
+              <g transform="rotate(180 200 200)"><use class="petal" href="#fold"/></g>
+              <g transform="rotate(225 200 200)"><use class="petal" href="#fold"/></g>
+              <g transform="rotate(270 200 200)"><use class="petal" href="#fold"/></g>
+              <g transform="rotate(315 200 200)"><use class="petal" href="#fold"/></g>
+              <g class="core">
+                <circle cx="200" cy="200" r="56" fill="url(#glow)"/>
+                <path fill="#ffd29b" d="M200 186 212 200 200 214 188 200Z"/>
+                <path fill="#fff1ce" d="M200 186 200 200 188 200Z"/>
+                <path fill="#d68766" d="M200 214 200 200 212 200Z"/>
+              </g>
+            </g>
+          </g>
+        </svg>
+      </div>
+    </fieldset>
+  </main>
+</body>
+</html>

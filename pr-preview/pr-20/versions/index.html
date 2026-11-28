@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rosie versions</title>
+<style>
+  :root { --bg:#0b0d14; --card:#141824; --line:#252b3b; --text:#e7e9f0; --muted:#8a91a6; --accent:#f0a050; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:15px/1.5 system-ui, sans-serif; }
+  main { max-width:880px; margin:0 auto; padding:32px 16px 64px; }
+  h1 { font-weight:600; margin:0 0 4px; }
+  h2 { font-size:13px; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); margin:36px 0 12px; }
+  p.lead { color:var(--muted); margin:0 0 8px; }
+  ul { list-style:none; margin:0; padding:0; display:grid; gap:10px; }
+  li { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px 16px; }
+  li a { color:var(--text); font-weight:600; text-decoration:none; }
+  li a:hover { color:var(--accent); }
+  .date { color:var(--muted); font-size:13px; margin-left:8px; }
+  .tag { font-size:12px; color:var(--accent); margin-left:8px; }
+  li p { margin:4px 0 0; color:var(--muted); }
+  code { font-size:13px; color:var(--text); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Rosie versions</h1>
+  <p class="lead">Every version we've built, oldest first. Open this page through a local server (<code>python -m http.server</code> in the repo root).</p>
+
+  <h2>Denim jacket</h2>
+  <ul>
+    <li><a href="chatgpt-jacket/index.html">ChatGPT's jacket</a><span class="date">Nov 21</span>
+      <p>ChatGPT's own version: two painted denim panels with a silk strand, morphing between Off, Idle and Working. Its summary is in <code>chatgpt-jacket/SUMMARY.md</code>.</p></li>
+    <li><a href="jacket-v10.html">Jacket v10</a><span class="date">Nov 21</span>
+      <p>Single file: painted lapels, particle orb, Muse ribbons, silk ring, Tune panel.</p></li>
+    <li><a href="jacket-v11.html">Jacket v11</a><span class="date">Nov 21</span>
+      <p>v10 with ChatGPT's Off and Idle poses added.</p></li>
+    <li><a href="presence-console/index.html">Presence console</a><span class="date">Nov 21–24</span>
+      <p>The modular jacket version that used to live in <code>src/</code>: jacket poses, knot, scarf and hoodie looks, Tune panel. Now in <code>presence-console/</code>.</p></li>
+    <li><a href="procedural.html">Procedural Rosie</a><span class="date">Nov 24</span>
+      <p>Everything drawn in code, no artwork.</p></li>
+  </ul>
+
+  <h2>Armillary orb</h2>
+  <ul>
+    <li><a href="orb-threejs/index.html">three.js orb v1</a><span class="date">Nov 25</span>
+      <p>First real-time 3D armillary orb: blades, rings, steel and bronze materials, bloom.</p></li>
+    <li><a href="orb-threejs/v2.html">three.js orb v2</a><span class="date">Nov 25</span>
+      <p>Rebuilt from the ChatGPT references, with a denim band wrapped around the orb.</p></li>
+    <li><a href="orb-threejs/v3.html">three.js orb v3</a><span class="date">Nov 25</span>
+      <p>Two passes matching the active orb mockup.</p></li>
+    <li><a href="orb-parts.html">2.5D orb from parts</a><span class="date">Nov 26</span>
+      <p>ChatGPT's painted parts (rings, pinion, bearing, blades) as separate images, moved in code.</p></li>
+    <li>Blender orb<span class="date">Nov 26–27</span>
+      <p>Not a page: <code>tools/orb/build_orb.py</code> and <code>build_mech_orb.py</code> render it in Blender (output in <code>tools/orb/out/</code>, not committed). Latest: curved plates that close into a round orb.</p></li>
+    <li><a href="../index.html">Particle orb over the scarf</a><span class="date">Nov 27–28</span><span class="tag">latest, in src/</span>
+      <p>All particles: stippled denim-twill plates with glowing hems and running stitches, a spiral core, sparks and halo dust, floating over the scarf base. The plates open like petals between Off, Idle and Working.</p></li>
+  </ul>
+
+  <h2>Other experiments</h2>
+  <ul>
+    <li><a href="fold-svg.html">Rosie Fold</a><span class="date">Nov 27</span>
+      <p>ChatGPT's code-only SVG avatar: folds that open around a core.</p></li>
+    <li>Blender knot<span class="date">Nov 21</span>
+      <p>Not a page: <code>tools/knot/</code> renders the lapels tying a knot. Motion approved, look not started.</p></li>
+  </ul>
+
+  <h2>Reference images</h2>
+  <ul>
+    <li>All ChatGPT artwork and mockups are in <code>assets/source/</code>; the armillary orb references are in <code>armillary-reference/</code> and <code>armillary-reference-v2/</code>.
+      <p>Only available locally, not on the live site.</p></li>
+  </ul>
+</main>
+</body>
+</html>
